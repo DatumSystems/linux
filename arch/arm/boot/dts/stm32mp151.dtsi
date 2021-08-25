@@ -1786,6 +1786,7 @@
 			};
 			ethernet_mac_address: mac@e4 {
 				reg = <0xe4 0x6>;
+				st,non-secure-otp;
 			};
 		};
 
