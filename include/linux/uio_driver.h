@@ -41,6 +41,8 @@ struct uio_mem {
 	resource_size_t		size;
 	int			memtype;
 	void __iomem		*internal_addr;
+	unsigned long		rd_offset;
+	unsigned long		wr_offset;
 	struct uio_map		*map;
 };
 

@@ -1,0 +1,367 @@
+#define DEBUG
+
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * drivers/uio/uio_dsi_mccrx.c
+ *
+ * Userspace I/O platform driver with generic IRQ handling code.
+ *
+ * Copyright (C) 2023 by Datum Systems, Inc.
+ *
+ * Based on uio_pdrv_genirq.c by Magnus Damm
+ * Copyright (c) 2008 by Magnus Damm
+ * Based on uio_pdrv.c by Uwe Kleine-Koenig,
+ * Copyright (C) 2008 by Digi International Inc.
+ * All rights reserved.
+ */
+
+#include <linux/hwspinlock.h>
+#include <linux/platform_device.h>
+#include <linux/uio_driver.h>
+#include <linux/spinlock.h>
+#include <linux/bitops.h>
+#include <linux/module.h>
+#include <linux/interrupt.h>
+#include <linux/stringify.h>
+#include <linux/pm_runtime.h>
+#include <linux/slab.h>
+#include <linux/irq.h>
+
+#include <linux/of.h>
+#include <linux/of_platform.h>
+#include <linux/of_address.h>
+
+#define HWSPNLCK_TIMEOUT 1000 /* usec */
+#define DRIVER_NAME "uio_dsi_mccrx"
+
+struct uio_dsi_mccrx_platdata {
+	struct uio_info *uioinfo;
+	spinlock_t lock;
+	struct hwspinlock *hwlock;
+	int hwlock_id;
+	void __iomem *ctlmem;
+	unsigned long flags;
+	struct platform_device *pdev;
+};
+
+/* Bits in uio_dsi_mccrx_platdata.flags */
+enum { UIO_IRQ_DISABLED = 0,
+};
+
+static int uio_dsi_mccrx_open(struct uio_info *info, struct inode *inode)
+{
+	struct uio_dsi_mccrx_platdata *priv = info->priv;
+
+	/* Wait until the Runtime PM code has woken up the device */
+	pm_runtime_get_sync(&priv->pdev->dev);
+	return 0;
+}
+
+static int uio_dsi_mccrx_release(struct uio_info *info, struct inode *inode)
+{
+	struct uio_dsi_mccrx_platdata *priv = info->priv;
+
+	/* Tell the Runtime PM code that the device has become idle */
+	pm_runtime_put_sync(&priv->pdev->dev);
+	return 0;
+}
+
+static irqreturn_t uio_dsi_mccrx_handler(int irq, struct uio_info *dev_info)
+{
+	struct uio_dsi_mccrx_platdata *priv = dev_info->priv;
+
+	/* Just disable the interrupt in the interrupt controller, and
+	 * remember the state so we can allow user space to enable it later.
+	 */
+
+	spin_lock(&priv->lock);
+	if (!__test_and_set_bit(UIO_IRQ_DISABLED, &priv->flags))
+		disable_irq_nosync(irq);
+	spin_unlock(&priv->lock);
+
+	return IRQ_HANDLED;
+}
+
+static int uio_dsi_mccrx_irqcontrol(struct uio_info *dev_info, s32 control)
+{
+	struct uio_dsi_mccrx_platdata *priv = dev_info->priv;
+	struct hwspinlock *hwlock = priv->hwlock;
+	unsigned long flags;
+	int err;
+
+	/* control = [read offset-16b][irq_on-16b] */
+	spin_lock_irqsave(&priv->lock, flags);
+
+	if (hwlock) {
+		err = hwspin_lock_timeout_in_atomic(hwlock, HWSPNLCK_TIMEOUT);
+		if (err) {
+			pr_err("%s can't get hwspinlock (%d)\n", __func__, err);
+			goto unlock;
+		}
+	}
+	/*
+	 * Update read offset in shared mccrx control memory
+	 */
+
+	/* Allow user space to enable and disable the interrupt
+	 * in the interrupt controller, but keep track of the
+	 * state to prevent per-irq depth damage.
+	 * Also allow update the read pointer for the CM4 MCC-RX interrupt
+	 * Serialize this operation to support multiple tasks and concurrency
+	 * with irq handler on SMP systems.
+	 */
+
+	/* Note that for the mccrx, the 16 MSBs are the new read offset,
+	 * the 16 LSBs are the enable/disable flag
+	 */
+
+	if (control & 0x000000ff) {
+		if (__test_and_clear_bit(UIO_IRQ_DISABLED, &priv->flags))
+			enable_irq(dev_info->irq);
+	} else {
+		if (!__test_and_set_bit(UIO_IRQ_DISABLED, &priv->flags))
+			disable_irq_nosync(dev_info->irq);
+	}
+
+hwunlock:
+	if (hwlock)
+		hwspin_unlock_in_atomic(hwlock);
+unlock:
+	spin_unlock_irqrestore(&priv->lock, flags);
+
+	return 0;
+}
+
+static void uio_dsi_mccrx_cleanup(void *data)
+{
+	struct device *dev = data;
+
+	pm_runtime_disable(dev);
+}
+
+static int uio_dsi_mccrx_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct uio_info *uioinfo = dev_get_platdata(dev);
+	struct device_node *node = pdev->dev.of_node;
+	struct uio_dsi_mccrx_platdata *priv;
+	struct uio_mem *uiomem;
+	int ret = -EINVAL;
+	struct hwspinlock *hwlock;
+	int hwlock_id;
+	int i;
+
+	if (node) {
+		const char *name;
+
+		/* alloc uioinfo for one device */
+		uioinfo = devm_kzalloc(dev, sizeof(*uioinfo), GFP_KERNEL);
+		if (!uioinfo) {
+			dev_err(dev, "unable to kmalloc\n");
+			return -ENOMEM;
+		}
+		/* check for hwspinlock which may not be available yet*/
+		hwlock_id = of_hwspin_lock_get_id(node, 0);
+		if (hwlock_id == -EPROBE_DEFER)
+			/* hwspinlock framwork not yet ready */
+			return hwlock_id;
+
+		if (hwlock_id >= 0) {
+			hwlock = devm_hwspin_lock_request_specific(dev,
+								   hwlock_id);
+			if (!hwlock) {
+				dev_err(dev, "Failed to request hwspinlock\n");
+				return -EINVAL;
+			}
+		} else {
+			dev_err(dev, "Failed to get hwspinlock\n");
+			return ret;
+		}
+
+		if (!of_property_read_string(node, "linux,uio-name", &name))
+			uioinfo->name = devm_kstrdup(dev, name, GFP_KERNEL);
+		else
+			uioinfo->name =
+				devm_kasprintf(dev, GFP_KERNEL, "%pOFn", node);
+
+		uioinfo->version = "devicetree";
+		/* Multiple IRQs are not supported */
+	}
+
+	if (!uioinfo || !uioinfo->name || !uioinfo->version) {
+		dev_err(dev, "missing platform_data\n");
+		return ret;
+	}
+
+	if (uioinfo->handler || uioinfo->irqcontrol ||
+	    uioinfo->irq_flags & IRQF_SHARED) {
+		dev_err(dev, "interrupt configuration error\n");
+		return ret;
+	}
+
+	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv) {
+		dev_err(dev, "unable to kmalloc\n");
+		return -ENOMEM;
+	}
+
+	priv->uioinfo = uioinfo;
+	spin_lock_init(&priv->lock);
+	priv->flags = 0; /* interrupt is enabled to begin with */
+	priv->pdev = pdev;
+	priv->hwlock = hwlock;
+	priv->hwlock_id = hwlock_id;
+
+	if (!uioinfo->irq) {
+		ret = platform_get_irq_optional(pdev, 0);
+		uioinfo->irq = ret;
+		if (ret == -ENXIO)
+			uioinfo->irq = UIO_IRQ_NONE;
+		else if (ret == -EPROBE_DEFER)
+			return ret;
+		else if (ret < 0) {
+			dev_err(dev, "failed to get IRQ\n");
+			return ret;
+		}
+	}
+
+	if (uioinfo->irq) {
+		struct irq_data *irq_data = irq_get_irq_data(uioinfo->irq);
+
+		/*
+		 * If a level interrupt, dont do lazy disable. Otherwise the
+		 * irq will fire again since clearing of the actual cause, on
+		 * device level, is done in userspace
+		 * irqd_is_level_type() isn't used since isn't valid until
+		 * irq is configured.
+		 */
+		if (irq_data &&
+		    irqd_get_trigger_type(irq_data) & IRQ_TYPE_LEVEL_MASK) {
+			dev_dbg(dev, "disable lazy unmask\n");
+			irq_set_status_flags(uioinfo->irq, IRQ_DISABLE_UNLAZY);
+		}
+	}
+
+	uiomem = &uioinfo->mem[0];
+
+	for (i = 0; i < pdev->num_resources; ++i) {
+		struct resource *r = &pdev->resource[i];
+
+		if (r->flags != IORESOURCE_MEM)
+			continue;
+
+		if (uiomem >= &uioinfo->mem[MAX_UIO_MAPS]) {
+			dev_warn(
+				dev,
+				"device has more than " __stringify(
+					MAX_UIO_MAPS) " I/O memory resources.\n");
+			break;
+		}
+
+		uiomem->memtype = UIO_MEM_PHYS;
+		uiomem->addr = r->start & PAGE_MASK;
+		uiomem->offs = r->start & ~PAGE_MASK;
+		uiomem->size =
+			(uiomem->offs + resource_size(r) + PAGE_SIZE - 1) &
+			PAGE_MASK;
+		uiomem->name = r->name;
+		if (!strcmp(uiomem->name, "mccrxctl")) {
+			uiomem->internal_addr =
+				ioremap_wc(uiomem->addr, uiomem->size);
+			priv->ctlmem = uiomem->internal_addr;
+		}
+
+		dev_dbg(&pdev->dev,
+			"mem[%d], paddr=0x%08x, off=0x%08lx, size=0x%08x, iaddr=%p, name=%s\n",
+			i, uiomem->addr, uiomem->offs, uiomem->size,
+			uiomem->internal_addr, uiomem->name);
+
+		++uiomem;
+	}
+
+	while (uiomem < &uioinfo->mem[MAX_UIO_MAPS]) {
+		uiomem->size = 0;
+		++uiomem;
+	}
+
+	/* This driver requires no hardware specific kernel code to handle
+	 * interrupts. Instead, the interrupt handler simply disables the
+	 * interrupt in the interrupt controller. User space is responsible
+	 * for performing hardware specific acknowledge and re-enabling of
+	 * the interrupt in the interrupt controller.
+	 *
+	 * Interrupt sharing is not supported.
+	 */
+
+	uioinfo->handler = uio_dsi_mccrx_handler;
+	uioinfo->irqcontrol = uio_dsi_mccrx_irqcontrol;
+	uioinfo->open = uio_dsi_mccrx_open;
+	uioinfo->release = uio_dsi_mccrx_release;
+	uioinfo->priv = priv;
+
+	/* Enable Runtime PM for this device:
+	 * The device starts in suspended state to allow the hardware to be
+	 * turned off by default. The Runtime PM bus code should power on the
+	 * hardware and enable clocks at open().
+	 */
+	pm_runtime_enable(dev);
+
+	ret = devm_add_action_or_reset(dev, uio_dsi_mccrx_cleanup, dev);
+	if (ret)
+		return ret;
+
+	ret = devm_uio_register_device(dev, priv->uioinfo);
+	if (ret)
+		dev_err(dev, "unable to register uio device\n");
+
+	return ret;
+}
+
+static int uio_dsi_mccrx_runtime_nop(struct device *dev)
+{
+	/* Runtime PM callback shared between ->runtime_suspend()
+	 * and ->runtime_resume(). Simply returns success.
+	 *
+	 * In this driver pm_runtime_get_sync() and pm_runtime_put_sync()
+	 * are used at open() and release() time. This allows the
+	 * Runtime PM code to turn off power to the device while the
+	 * device is unused, ie before open() and after release().
+	 *
+	 * This Runtime PM callback does not need to save or restore
+	 * any registers since user space is responsbile for hardware
+	 * register reinitialization after open().
+	 */
+	return 0;
+}
+
+static const struct dev_pm_ops uio_dsi_mccrx_dev_pm_ops = {
+	.runtime_suspend = uio_dsi_mccrx_runtime_nop,
+	.runtime_resume = uio_dsi_mccrx_runtime_nop,
+};
+
+#ifdef CONFIG_OF
+static struct of_device_id uio_of_genirq_match[] = {
+	{ .compatible = "datum-uio-mccrx" },
+	{ /* Sentinel */ },
+};
+MODULE_DEVICE_TABLE(of, uio_of_genirq_match);
+module_param_string(of_id, uio_of_genirq_match[0].compatible, 128, 0);
+MODULE_PARM_DESC(of_id, "Openfirmware id of the device to be handled by uio");
+#endif
+
+static struct platform_driver uio_dsi_mccrx = {
+	.probe = uio_dsi_mccrx_probe,
+	.driver =
+		{
+			.name = DRIVER_NAME,
+			.pm = &uio_dsi_mccrx_dev_pm_ops,
+			.of_match_table = of_match_ptr(uio_of_genirq_match),
+		},
+};
+
+module_platform_driver(uio_dsi_mccrx);
+
+MODULE_AUTHOR("Mark Carlin");
+MODULE_DESCRIPTION("Userspace I/O platform driver with generic IRQ handling");
+MODULE_LICENSE("GPL v2");
+MODULE_ALIAS("platform:" DRIVER_NAME);

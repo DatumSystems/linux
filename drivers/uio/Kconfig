@@ -172,4 +172,17 @@ config UIO_STM32_FMC2_FPGA
 	help
 	  Userspace I/O driver to STM32MPU FMC SRAM interface to FPGAs.
 	  Used for FPGA configuration, FPGA register reading and writing.
+
+config UIO_DSI_MCCRX
+	tristate "Datum Userspace MCC I/O platform driver"
+	help
+	  Platform driver for Datum MCC receiver from CM4 context, including
+	  interrupt handling code. Shared interrupts are not supported.
+
+	  This kernel driver requires that the matching userspace driver
+	  handles interrupts in a special way. Userspace is responsible
+	  for acknowledging the hardware device if needed, and re-enabling
+	  interrupts in the interrupt controller using the write() syscall.
+
+	  If you don't know what to do here, say N.
 endif
