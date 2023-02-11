@@ -2,7 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * drivers/uio/uio_dsi_mccrx.c
+ * drivers/uio/uio_dsi_mcc.c
  *
  * Userspace I/O platform driver with generic IRQ handling code.
  *
@@ -21,6 +21,7 @@
 #include <linux/spinlock.h>
 #include <linux/bitops.h>
 #include <linux/module.h>
+#include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/stringify.h>
 #include <linux/pm_runtime.h>
@@ -32,43 +33,51 @@
 #include <linux/of_address.h>
 
 #define HWSPNLCK_TIMEOUT 1000 /* usec */
-#define DRIVER_NAME "uio_dsi_mccrx"
+#define DRIVER_NAME "uio_dsi_mcc"
 
-struct uio_dsi_mccrx_platdata {
+struct uio_dsi_mcc_ctl {
+	u16 mccrx_rd;
+	u16 mccrx_wr;
+	u16 mcctx_rd;
+	u16 mcctx_wr;
+};
+
+struct uio_dsi_mcc_platdata {
 	struct uio_info *uioinfo;
 	spinlock_t lock;
 	struct hwspinlock *hwlock;
 	int hwlock_id;
+	struct gpio_desc *tx_irq_gpio;
 	void __iomem *ctlmem;
 	unsigned long flags;
 	struct platform_device *pdev;
 };
 
-/* Bits in uio_dsi_mccrx_platdata.flags */
+/* Bits in uio_dsi_mcc_platdata.flags */
 enum { UIO_IRQ_DISABLED = 0,
 };
 
-static int uio_dsi_mccrx_open(struct uio_info *info, struct inode *inode)
+static int uio_dsi_mcc_open(struct uio_info *info, struct inode *inode)
 {
-	struct uio_dsi_mccrx_platdata *priv = info->priv;
+	struct uio_dsi_mcc_platdata *priv = info->priv;
 
 	/* Wait until the Runtime PM code has woken up the device */
 	pm_runtime_get_sync(&priv->pdev->dev);
 	return 0;
 }
 
-static int uio_dsi_mccrx_release(struct uio_info *info, struct inode *inode)
+static int uio_dsi_mcc_release(struct uio_info *info, struct inode *inode)
 {
-	struct uio_dsi_mccrx_platdata *priv = info->priv;
+	struct uio_dsi_mcc_platdata *priv = info->priv;
 
 	/* Tell the Runtime PM code that the device has become idle */
 	pm_runtime_put_sync(&priv->pdev->dev);
 	return 0;
 }
 
-static irqreturn_t uio_dsi_mccrx_handler(int irq, struct uio_info *dev_info)
+static irqreturn_t uio_dsi_mcc_handler(int irq, struct uio_info *dev_info)
 {
-	struct uio_dsi_mccrx_platdata *priv = dev_info->priv;
+	struct uio_dsi_mcc_platdata *priv = dev_info->priv;
 
 	/* Just disable the interrupt in the interrupt controller, and
 	 * remember the state so we can allow user space to enable it later.
@@ -82,14 +91,15 @@ static irqreturn_t uio_dsi_mccrx_handler(int irq, struct uio_info *dev_info)
 	return IRQ_HANDLED;
 }
 
-static int uio_dsi_mccrx_irqcontrol(struct uio_info *dev_info, s32 control)
+static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 {
-	struct uio_dsi_mccrx_platdata *priv = dev_info->priv;
+	struct uio_dsi_mcc_platdata *priv = dev_info->priv;
 	struct hwspinlock *hwlock = priv->hwlock;
+	struct uio_dsi_mcc_ctl *ctl = priv->ctlmem;
+
 	unsigned long flags;
 	int err;
 
-	/* control = [read offset-16b][irq_on-16b] */
 	spin_lock_irqsave(&priv->lock, flags);
 
 	if (hwlock) {
@@ -99,9 +109,32 @@ static int uio_dsi_mccrx_irqcontrol(struct uio_info *dev_info, s32 control)
 			goto unlock;
 		}
 	}
-	/*
-	 * Update read offset in shared mccrx control memory
+
+	/* The control integer is mapped as following:
+	 * MSB:  1 bit   : clear rx interrupt.
+	 *       1 bit   : set tx interrupt if requested.
+	 *       1 bit   : reset mcc_tx offsets
+	 *       1 bit   : 1 = offset is new mcc_tx wr ptr (head) / 0 = offset is new mcc_rx rd ptr (tail)
+	 *       13 bits : spare
+	 * LSB:  16 bits : new tx or rx offset
 	 */
+
+	if (control & 8) {
+		/* Update mcc_tx write offset in shared sram */
+		ctl->mcctx_wr = control & 0x0000ffff;
+		if (control & 4)
+			ctl->mcctx_rd = control & 0x0000ffff;
+	} else {
+		/* Update mcc_rx read offset is shared sram */
+		ctl->mccrx_rd = control & 0x0000ff;
+	}
+
+	/* Set tx interrupt if requested */
+	if (control & 2) {
+		// toggle irq pin for CM4
+		gpiod_set_value(priv->tx_irq_gpio, 1);
+		gpiod_set_value(priv->tx_irq_gpio, 0);
+	}
 
 	/* Allow user space to enable and disable the interrupt
 	 * in the interrupt controller, but keep track of the
@@ -111,11 +144,8 @@ static int uio_dsi_mccrx_irqcontrol(struct uio_info *dev_info, s32 control)
 	 * with irq handler on SMP systems.
 	 */
 
-	/* Note that for the mccrx, the 16 MSBs are the new read offset,
-	 * the 16 LSBs are the enable/disable flag
-	 */
-
-	if (control & 0x000000ff) {
+	/* Clear rx interrupt if requested*/
+	if (control & 1) {
 		if (__test_and_clear_bit(UIO_IRQ_DISABLED, &priv->flags))
 			enable_irq(dev_info->irq);
 	} else {
@@ -132,19 +162,19 @@ unlock:
 	return 0;
 }
 
-static void uio_dsi_mccrx_cleanup(void *data)
+static void uio_dsi_mcc_cleanup(void *data)
 {
 	struct device *dev = data;
 
 	pm_runtime_disable(dev);
 }
 
-static int uio_dsi_mccrx_probe(struct platform_device *pdev)
+static int uio_dsi_mcc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct uio_info *uioinfo = dev_get_platdata(dev);
 	struct device_node *node = pdev->dev.of_node;
-	struct uio_dsi_mccrx_platdata *priv;
+	struct uio_dsi_mcc_platdata *priv;
 	struct uio_mem *uiomem;
 	int ret = -EINVAL;
 	struct hwspinlock *hwlock;
@@ -212,6 +242,17 @@ static int uio_dsi_mccrx_probe(struct platform_device *pdev)
 	priv->hwlock = hwlock;
 	priv->hwlock_id = hwlock_id;
 
+	/* mcc-tx irq gpio */
+	if (!priv->tx_irq_gpio) {
+		priv->tx_irq_gpio = devm_gpiod_get(&pdev->dev, "tx-irq-gpio",
+						   GPIOD_OUT_LOW);
+		if (IS_ERR(priv->tx_irq_gpio)) {
+			dev_err(dev, "missing tx irq gpio\n");
+			return -EINVAL;
+		}
+	}
+
+	/* mcc-rx irq gpio */
 	if (!uioinfo->irq) {
 		ret = platform_get_irq_optional(pdev, 0);
 		uioinfo->irq = ret;
@@ -265,7 +306,7 @@ static int uio_dsi_mccrx_probe(struct platform_device *pdev)
 			(uiomem->offs + resource_size(r) + PAGE_SIZE - 1) &
 			PAGE_MASK;
 		uiomem->name = r->name;
-		if (!strcmp(uiomem->name, "mccrxctl")) {
+		if (!strcmp(uiomem->name, "mcc-ctl")) {
 			uiomem->internal_addr =
 				ioremap_wc(uiomem->addr, uiomem->size);
 			priv->ctlmem = uiomem->internal_addr;
@@ -293,10 +334,10 @@ static int uio_dsi_mccrx_probe(struct platform_device *pdev)
 	 * Interrupt sharing is not supported.
 	 */
 
-	uioinfo->handler = uio_dsi_mccrx_handler;
-	uioinfo->irqcontrol = uio_dsi_mccrx_irqcontrol;
-	uioinfo->open = uio_dsi_mccrx_open;
-	uioinfo->release = uio_dsi_mccrx_release;
+	uioinfo->handler = uio_dsi_mcc_handler;
+	uioinfo->irqcontrol = uio_dsi_mcc_irqcontrol;
+	uioinfo->open = uio_dsi_mcc_open;
+	uioinfo->release = uio_dsi_mcc_release;
 	uioinfo->priv = priv;
 
 	/* Enable Runtime PM for this device:
@@ -306,18 +347,18 @@ static int uio_dsi_mccrx_probe(struct platform_device *pdev)
 	 */
 	pm_runtime_enable(dev);
 
-	ret = devm_add_action_or_reset(dev, uio_dsi_mccrx_cleanup, dev);
+	ret = devm_add_action_or_reset(dev, uio_dsi_mcc_cleanup, dev);
 	if (ret)
 		return ret;
 
-	ret = devm_uio_register_device(dev, priv->uioinfo);
+	ret = uio_register_device(dev, priv->uioinfo);
 	if (ret)
-		dev_err(dev, "unable to register uio device\n");
+		dev_err(dev, "unable to register uio dsi_mcc device\n");
 
 	return ret;
 }
 
-static int uio_dsi_mccrx_runtime_nop(struct device *dev)
+static int uio_dsi_mcc_runtime_nop(struct device *dev)
 {
 	/* Runtime PM callback shared between ->runtime_suspend()
 	 * and ->runtime_resume(). Simply returns success.
@@ -334,14 +375,14 @@ static int uio_dsi_mccrx_runtime_nop(struct device *dev)
 	return 0;
 }
 
-static const struct dev_pm_ops uio_dsi_mccrx_dev_pm_ops = {
-	.runtime_suspend = uio_dsi_mccrx_runtime_nop,
-	.runtime_resume = uio_dsi_mccrx_runtime_nop,
+static const struct dev_pm_ops uio_dsi_mcc_dev_pm_ops = {
+	.runtime_suspend = uio_dsi_mcc_runtime_nop,
+	.runtime_resume = uio_dsi_mcc_runtime_nop,
 };
 
 #ifdef CONFIG_OF
 static struct of_device_id uio_of_genirq_match[] = {
-	{ .compatible = "datum-uio-mccrx" },
+	{ .compatible = "datum-uio-mcc" },
 	{ /* Sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, uio_of_genirq_match);
@@ -349,19 +390,19 @@ module_param_string(of_id, uio_of_genirq_match[0].compatible, 128, 0);
 MODULE_PARM_DESC(of_id, "Openfirmware id of the device to be handled by uio");
 #endif
 
-static struct platform_driver uio_dsi_mccrx = {
-	.probe = uio_dsi_mccrx_probe,
+static struct platform_driver uio_dsi_mcc = {
+	.probe = uio_dsi_mcc_probe,
 	.driver =
 		{
 			.name = DRIVER_NAME,
-			.pm = &uio_dsi_mccrx_dev_pm_ops,
+			.pm = &uio_dsi_mcc_dev_pm_ops,
 			.of_match_table = of_match_ptr(uio_of_genirq_match),
 		},
 };
 
-module_platform_driver(uio_dsi_mccrx);
+module_platform_driver(uio_dsi_mcc);
 
 MODULE_AUTHOR("Mark Carlin");
-MODULE_DESCRIPTION("Userspace I/O platform driver with generic IRQ handling");
+MODULE_DESCRIPTION("Userspace I/O MCC platform driver with IRQ handling");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:" DRIVER_NAME);

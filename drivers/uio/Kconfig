@@ -166,17 +166,10 @@ config UIO_HV_GENERIC
 
 	  If you compile this as a module, it will be called uio_hv_generic.
 
-config UIO_STM32_FMC2_FPGA
-	tristate "Datum STM32MPU FMC FPGA interface driver"
-	depends on UIO && ARCH_STM32
-	help
-	  Userspace I/O driver to STM32MPU FMC SRAM interface to FPGAs.
-	  Used for FPGA configuration, FPGA register reading and writing.
-
-config UIO_DSI_MCCRX
+config UIO_DSI_MCC
 	tristate "Datum Userspace MCC I/O platform driver"
 	help
-	  Platform driver for Datum MCC receiver from CM4 context, including
+	  Platform driver for Datum MCC interface to CM4 context, including
 	  interrupt handling code. Shared interrupts are not supported.
 
 	  This kernel driver requires that the matching userspace driver
