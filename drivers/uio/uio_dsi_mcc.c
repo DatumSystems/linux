@@ -45,8 +45,10 @@ struct uio_dsi_mcc_ctl {
 struct uio_dsi_mcc_platdata {
 	struct uio_info *uioinfo;
 	spinlock_t lock;
-	struct hwspinlock *hwlock;
-	int hwlock_id;
+	struct hwspinlock *hwlock_tx;
+	struct hwspinlock *hwlock_rx;
+	int hwlock_id_tx;
+	int hwlock_id_rx;
 	struct gpio_desc *tx_irq_gpio;
 	void __iomem *ctlmem;
 	unsigned long flags;
@@ -94,7 +96,7 @@ static irqreturn_t uio_dsi_mcc_handler(int irq, struct uio_info *dev_info)
 static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 {
 	struct uio_dsi_mcc_platdata *priv = dev_info->priv;
-	struct hwspinlock *hwlock = priv->hwlock;
+	struct hwspinlock *hwlock;
 	struct uio_dsi_mcc_ctl *ctl = priv->ctlmem;
 
 	unsigned long flags;
@@ -102,61 +104,70 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 
 	spin_lock_irqsave(&priv->lock, flags);
 
-	if (hwlock) {
-		err = hwspin_lock_timeout_in_atomic(hwlock, HWSPNLCK_TIMEOUT);
-		if (err) {
-			pr_err("%s can't get hwspinlock (%d)\n", __func__, err);
-			goto unlock;
-		}
-	}
-
 	/* The control integer is mapped as following:
-	 * MSB:  1 bit   : clear rx interrupt.
-	 *       1 bit   : set tx interrupt if requested.
-	 *       1 bit   : reset mcc_tx offsets
-	 *       1 bit   : 1 = offset is new mcc_tx wr ptr (head) / 0 = offset is new mcc_rx rd ptr (tail)
+	 * MSB:  1 bit   : 1 = operation is rx
+	                 : 0 = operation is tx
+	 *       1 bit   : 1 = enable cm4 rx interrupt and update rx rd offset if operation is rx
+	 *                 1 = toggle cm4 tx interrupt and update tx wr offset if opeartion is tx
+	 *                 0 = disable cm4 rx interrupt and update rx rd offset if operation is rx
+	 *                 0 = update tx wr offset only, no cm4 interrupt toggle.
+	 *       1 bit     1 = reset tx offset (only if operation is tx)
+	 *                 0 = nop
 	 *       13 bits : spare
 	 * LSB:  16 bits : new tx or rx offset
 	 */
 
-	if (control & 8) {
-		/* Update mcc_tx write offset in shared sram */
-		ctl->mcctx_wr = control & 0x0000ffff;
-		if (control & 4)
-			ctl->mcctx_rd = control & 0x0000ffff;
+	if (control & 0x80000000) {
+		hwlock = priv->hwlock_rx;
+		/* rx interrupt control*/
+		if (hwlock) {
+			err = hwspin_lock_timeout_in_atomic(hwlock,
+							    HWSPNLCK_TIMEOUT);
+			if (err) {
+				pr_err("%s can't get rx hwspinlock (%d)\n",
+				       __func__, err);
+				goto hwunlock;
+			}
+		}
+		/* update rd offset*/
+		ctl->mccrx_rd = control & 0x0000ffff;
+		/* Clear rx interrupt if requested*/
+		if (control & 0x40000000) {
+			if (__test_and_clear_bit(UIO_IRQ_DISABLED,
+						 &priv->flags))
+				enable_irq(dev_info->irq);
+		} else {
+			if (!__test_and_set_bit(UIO_IRQ_DISABLED, &priv->flags))
+				disable_irq_nosync(dev_info->irq);
+		}
 	} else {
-		/* Update mcc_rx read offset is shared sram */
-		ctl->mccrx_rd = control & 0x0000ff;
-	}
-
-	/* Set tx interrupt if requested */
-	if (control & 2) {
-		// toggle irq pin for CM4
-		gpiod_set_value(priv->tx_irq_gpio, 1);
-		gpiod_set_value(priv->tx_irq_gpio, 0);
-	}
-
-	/* Allow user space to enable and disable the interrupt
-	 * in the interrupt controller, but keep track of the
-	 * state to prevent per-irq depth damage.
-	 * Also allow update the read pointer for the CM4 MCC-RX interrupt
-	 * Serialize this operation to support multiple tasks and concurrency
-	 * with irq handler on SMP systems.
-	 */
-
-	/* Clear rx interrupt if requested*/
-	if (control & 1) {
-		if (__test_and_clear_bit(UIO_IRQ_DISABLED, &priv->flags))
-			enable_irq(dev_info->irq);
-	} else {
-		if (!__test_and_set_bit(UIO_IRQ_DISABLED, &priv->flags))
-			disable_irq_nosync(dev_info->irq);
+		/* tx interrupt control*/
+		hwlock = priv->hwlock_tx;
+		if (hwlock) {
+			err = hwspin_lock_timeout_in_atomic(hwlock,
+							    HWSPNLCK_TIMEOUT);
+			if (err) {
+				pr_err("%s can't get tx hwspinlock (%d)\n",
+				       __func__, err);
+				goto hwunlock;
+			}
+		}
+		if (control & 0x20000000)
+			ctl->mcctx_rd = ctl->mcctx_wr = control & 0x0000ffff;
+		else
+			ctl->mcctx_wr = control & 0x0000ffff;
+		/* Set tx interrupt if requested */
+		if (control & 0x40000000) {
+			// toggle irq pin for CM4
+			gpiod_set_value(priv->tx_irq_gpio, 1);
+			gpiod_set_value(priv->tx_irq_gpio, 0);
+		}
 	}
 
 hwunlock:
 	if (hwlock)
 		hwspin_unlock_in_atomic(hwlock);
-unlock:
+
 	spin_unlock_irqrestore(&priv->lock, flags);
 
 	return 0;
@@ -177,8 +188,8 @@ static int uio_dsi_mcc_probe(struct platform_device *pdev)
 	struct uio_dsi_mcc_platdata *priv;
 	struct uio_mem *uiomem;
 	int ret = -EINVAL;
-	struct hwspinlock *hwlock;
-	int hwlock_id;
+	struct hwspinlock *hwlock_tx, *hwlock_rx;
+	int hwlock_id_tx, hwlock_id_rx;
 	int i;
 
 	if (node) {
@@ -190,21 +201,35 @@ static int uio_dsi_mcc_probe(struct platform_device *pdev)
 			dev_err(dev, "unable to kmalloc\n");
 			return -ENOMEM;
 		}
-		/* check for hwspinlock which may not be available yet*/
-		hwlock_id = of_hwspin_lock_get_id(node, 0);
-		if (hwlock_id == -EPROBE_DEFER)
+		/* check for hwspinlocks which may not be available yet*/
+		hwlock_id_tx = of_hwspin_lock_get_id(node, 0);
+		if (hwlock_id_tx == -EPROBE_DEFER)
 			/* hwspinlock framwork not yet ready */
-			return hwlock_id;
+			return hwlock_id_tx;
 
-		if (hwlock_id >= 0) {
-			hwlock = devm_hwspin_lock_request_specific(dev,
-								   hwlock_id);
-			if (!hwlock) {
-				dev_err(dev, "Failed to request hwspinlock\n");
+		if (hwlock_id_tx >= 0) {
+			hwlock_tx = devm_hwspin_lock_request_specific(
+				dev, hwlock_id_tx);
+			if (!hwlock_tx) {
+				dev_err(dev,
+					"Failed to request tx hwspinlock\n");
 				return -EINVAL;
 			}
 		} else {
-			dev_err(dev, "Failed to get hwspinlock\n");
+			dev_err(dev, "Failed to get tx hwspinlock\n");
+			return ret;
+		}
+		hwlock_id_rx = of_hwspin_lock_get_id(node, 1);
+		if (hwlock_id_rx >= 0) {
+			hwlock_rx = devm_hwspin_lock_request_specific(
+				dev, hwlock_id_rx);
+			if (!hwlock_rx) {
+				dev_err(dev,
+					"Failed to request rx hwspinlock\n");
+				return -EINVAL;
+			}
+		} else {
+			dev_err(dev, "Failed to get rx hwspinlock\n");
 			return ret;
 		}
 
@@ -239,13 +264,15 @@ static int uio_dsi_mcc_probe(struct platform_device *pdev)
 	spin_lock_init(&priv->lock);
 	priv->flags = 0; /* interrupt is enabled to begin with */
 	priv->pdev = pdev;
-	priv->hwlock = hwlock;
-	priv->hwlock_id = hwlock_id;
+	priv->hwlock_tx = hwlock_tx;
+	priv->hwlock_id_tx = hwlock_id_tx;
+	priv->hwlock_rx = hwlock_rx;
+	priv->hwlock_id_rx = hwlock_id_rx;
 
 	/* mcc-tx irq gpio */
 	if (!priv->tx_irq_gpio) {
-		priv->tx_irq_gpio = devm_gpiod_get(&pdev->dev, "tx-irq-gpio",
-						   GPIOD_OUT_LOW);
+		priv->tx_irq_gpio =
+			devm_gpiod_get(&pdev->dev, "tx-irq", GPIOD_OUT_LOW);
 		if (IS_ERR(priv->tx_irq_gpio)) {
 			dev_err(dev, "missing tx irq gpio\n");
 			return -EINVAL;
