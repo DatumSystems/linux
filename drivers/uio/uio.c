@@ -12,6 +12,7 @@
  * Base Functions
  */
 
+#include <linux/hwspinlock.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/poll.h>
@@ -25,7 +26,7 @@
 #include <linux/cdev.h>
 #include <linux/uio_driver.h>
 
-#define UIO_MAX_DEVICES		(1U << MINORBITS)
+#define UIO_MAX_DEVICES (1U << MINORBITS)
 
 static int uio_major;
 static struct cdev *uio_cdev;
@@ -88,7 +89,7 @@ static struct attribute *attrs[] = {
 	&addr_attribute.attr,
 	&size_attribute.attr,
 	&offset_attribute.attr,
-	NULL,	/* need to NULL terminate the list of attributes */
+	NULL, /* need to NULL terminate the list of attributes */
 };
 
 static void map_release(struct kobject *kobj)
@@ -117,9 +118,9 @@ static const struct sysfs_ops map_sysfs_ops = {
 };
 
 static struct kobj_type map_attr_type = {
-	.release	= map_release,
-	.sysfs_ops	= &map_sysfs_ops,
-	.default_attrs	= attrs,
+	.release = map_release,
+	.sysfs_ops = &map_sysfs_ops,
+	.default_attrs = attrs,
 };
 
 struct uio_portio {
@@ -148,7 +149,7 @@ static ssize_t portio_size_show(struct uio_port *port, char *buf)
 
 static ssize_t portio_porttype_show(struct uio_port *port, char *buf)
 {
-	const char *porttypes[] = {"none", "x86", "gpio", "other"};
+	const char *porttypes[] = { "none", "x86", "gpio", "other" };
 
 	if ((port->porttype < 0) || (port->porttype > UIO_PORT_OTHER))
 		return -EINVAL;
@@ -186,7 +187,7 @@ static void portio_release(struct kobject *kobj)
 }
 
 static ssize_t portio_type_show(struct kobject *kobj, struct attribute *attr,
-			     char *buf)
+				char *buf)
 {
 	struct uio_portio *portio = to_portio(kobj);
 	struct uio_port *port = portio->port;
@@ -205,13 +206,63 @@ static const struct sysfs_ops portio_sysfs_ops = {
 };
 
 static struct kobj_type portio_attr_type = {
-	.release	= portio_release,
-	.sysfs_ops	= &portio_sysfs_ops,
-	.default_attrs	= portio_attrs,
+	.release = portio_release,
+	.sysfs_ops = &portio_sysfs_ops,
+	.default_attrs = portio_attrs,
 };
 
-static ssize_t name_show(struct device *dev,
-			 struct device_attribute *attr, char *buf)
+static ssize_t tx_offsets_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct uio_device *idev = dev_get_drvdata(dev);
+	int *rd_offset, *wr_offset;
+	int ret;
+
+	mutex_lock(&idev->info_lock);
+	if (!idev->info) {
+		ret = -EINVAL;
+		dev_err(dev, "the device has been unregistered\n");
+		goto out;
+	}
+
+	if (uio_dsi_mcc_tx_offsets(idev, rd_offset, wr_offset))
+		goto out;
+
+	ret = sprintf(buf, "%d\n%d\n", *rd_offset, *wr_offset);
+
+out:
+	mutex_unlock(&idev->info_lock);
+	return ret;
+}
+static DEVICE_ATTR_RO(tx_offsets);
+
+static ssize_t rx_offsets_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct uio_device *idev = dev_get_drvdata(dev);
+	int *rd_offset, *wr_offset;
+	int ret;
+
+	mutex_lock(&idev->info_lock);
+	if (!idev->info) {
+		ret = -EINVAL;
+		dev_err(dev, "the device has been unregistered\n");
+		goto out;
+	}
+
+	if (uio_dsi_mcc_rx_offsets(idev, rd_offset, wr_offset))
+		goto out;
+
+	ret = sprintf(buf, "%d\n%d\n", *rd_offset, *wr_offset);
+
+out:
+	mutex_unlock(&idev->info_lock);
+	return ret;
+}
+static DEVICE_ATTR_RO(rx_offsets);
+
+static ssize_t name_show(struct device *dev, struct device_attribute *attr,
+			 char *buf)
 {
 	struct uio_device *idev = dev_get_drvdata(dev);
 	int ret;
@@ -231,8 +282,8 @@ out:
 }
 static DEVICE_ATTR_RO(name);
 
-static ssize_t version_show(struct device *dev,
-			    struct device_attribute *attr, char *buf)
+static ssize_t version_show(struct device *dev, struct device_attribute *attr,
+			    char *buf)
 {
 	struct uio_device *idev = dev_get_drvdata(dev);
 	int ret;
@@ -252,8 +303,8 @@ out:
 }
 static DEVICE_ATTR_RO(version);
 
-static ssize_t event_show(struct device *dev,
-			  struct device_attribute *attr, char *buf)
+static ssize_t event_show(struct device *dev, struct device_attribute *attr,
+			  char *buf)
 {
 	struct uio_device *idev = dev_get_drvdata(dev);
 	return sprintf(buf, "%u\n", (unsigned int)atomic_read(&idev->event));
@@ -261,10 +312,9 @@ static ssize_t event_show(struct device *dev,
 static DEVICE_ATTR_RO(event);
 
 static struct attribute *uio_attrs[] = {
-	&dev_attr_name.attr,
-	&dev_attr_version.attr,
-	&dev_attr_event.attr,
-	NULL,
+	&dev_attr_tx_offsets.attr, &dev_attr_rx_offsets.attr,
+	&dev_attr_name.attr,       &dev_attr_version.attr,
+	&dev_attr_event.attr,      NULL,
 };
 ATTRIBUTE_GROUPS(uio);
 
@@ -296,8 +346,8 @@ static int uio_dev_add_attributes(struct uio_device *idev)
 			break;
 		if (!map_found) {
 			map_found = 1;
-			idev->map_dir = kobject_create_and_add("maps",
-							&idev->dev.kobj);
+			idev->map_dir =
+				kobject_create_and_add("maps", &idev->dev.kobj);
 			if (!idev->map_dir) {
 				ret = -ENOMEM;
 				goto err_map;
@@ -325,8 +375,8 @@ static int uio_dev_add_attributes(struct uio_device *idev)
 			break;
 		if (!portio_found) {
 			portio_found = 1;
-			idev->portio_dir = kobject_create_and_add("portio",
-							&idev->dev.kobj);
+			idev->portio_dir = kobject_create_and_add(
+				"portio", &idev->dev.kobj);
 			if (!idev->portio_dir) {
 				ret = -ENOMEM;
 				goto err_portio;
@@ -340,8 +390,8 @@ static int uio_dev_add_attributes(struct uio_device *idev)
 		kobject_init(&portio->kobj, &portio_attr_type);
 		portio->port = port;
 		port->portio = portio;
-		ret = kobject_add(&portio->kobj, idev->portio_dir,
-							"port%d", pi);
+		ret = kobject_add(&portio->kobj, idev->portio_dir, "port%d",
+				  pi);
 		if (ret)
 			goto err_portio_kobj;
 		ret = kobject_uevent(&portio->kobj, KOBJ_ADD);
@@ -560,8 +610,8 @@ static __poll_t uio_poll(struct file *filep, poll_table *wait)
 	return 0;
 }
 
-static ssize_t uio_read(struct file *filep, char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t uio_read(struct file *filep, char __user *buf, size_t count,
+			loff_t *ppos)
 {
 	struct uio_listener *listener = filep->private_data;
 	struct uio_device *idev = listener->dev;
@@ -616,7 +666,7 @@ static ssize_t uio_read(struct file *filep, char __user *buf,
 }
 
 static ssize_t uio_write(struct file *filep, const char __user *buf,
-			size_t count, loff_t *ppos)
+			 size_t count, loff_t *ppos)
 {
 	struct uio_listener *listener = filep->private_data;
 	struct uio_device *idev = listener->dev;
@@ -750,11 +800,8 @@ static int uio_mmap_physical(struct vm_area_struct *vma)
 	 * So we just do the physical mmap without a page
 	 * offset.
 	 */
-	return remap_pfn_range(vma,
-			       vma->vm_start,
-			       mem->addr >> PAGE_SHIFT,
-			       vma->vm_end - vma->vm_start,
-			       vma->vm_page_prot);
+	return remap_pfn_range(vma, vma->vm_start, mem->addr >> PAGE_SHIFT,
+			       vma->vm_end - vma->vm_start, vma->vm_page_prot);
 }
 
 static int uio_mmap(struct file *filep, struct vm_area_struct *vma)
@@ -783,8 +830,9 @@ static int uio_mmap(struct file *filep, struct vm_area_struct *vma)
 	}
 
 	requested_pages = vma_pages(vma);
-	actual_pages = ((idev->info->mem[mi].addr & ~PAGE_MASK)
-			+ idev->info->mem[mi].size + PAGE_SIZE -1) >> PAGE_SHIFT;
+	actual_pages = ((idev->info->mem[mi].addr & ~PAGE_MASK) +
+			idev->info->mem[mi].size + PAGE_SIZE - 1) >>
+		       PAGE_SHIFT;
 	if (requested_pages > actual_pages) {
 		ret = -EINVAL;
 		goto out;
@@ -808,21 +856,21 @@ static int uio_mmap(struct file *filep, struct vm_area_struct *vma)
 		ret = -EINVAL;
 	}
 
- out:
+out:
 	mutex_unlock(&idev->info_lock);
 	return ret;
 }
 
 static const struct file_operations uio_fops = {
-	.owner		= THIS_MODULE,
-	.open		= uio_open,
-	.release	= uio_release,
-	.read		= uio_read,
-	.write		= uio_write,
-	.mmap		= uio_mmap,
-	.poll		= uio_poll,
-	.fasync		= uio_fasync,
-	.llseek		= noop_llseek,
+	.owner = THIS_MODULE,
+	.open = uio_open,
+	.release = uio_release,
+	.read = uio_read,
+	.write = uio_write,
+	.mmap = uio_mmap,
+	.poll = uio_poll,
+	.fasync = uio_fasync,
+	.llseek = noop_llseek,
 };
 
 static int uio_major_init(void)
@@ -913,8 +961,7 @@ static void uio_device_release(struct device *dev)
  *
  * returns zero on success or a negative error code.
  */
-int __uio_register_device(struct module *owner,
-			  struct device *parent,
+int __uio_register_device(struct module *owner, struct device *parent,
 			  struct uio_info *info)
 {
 	struct uio_device *idev;
@@ -975,8 +1022,8 @@ int __uio_register_device(struct module *owner,
 		 * FDs at the time of unregister and therefore may not be
 		 * freed until they are released.
 		 */
-		ret = request_irq(info->irq, uio_interrupt,
-				  info->irq_flags, info->name, idev);
+		ret = request_irq(info->irq, uio_interrupt, info->irq_flags,
+				  info->name, idev);
 		if (ret) {
 			info->uio_dev = NULL;
 			goto err_request_irq;
@@ -1043,6 +1090,4 @@ static void __exit uio_exit(void)
 	idr_destroy(&uio_idr);
 }
 
-module_init(uio_init)
-module_exit(uio_exit)
-MODULE_LICENSE("GPL v2");
+module_init(uio_init) module_exit(uio_exit) MODULE_LICENSE("GPL v2");

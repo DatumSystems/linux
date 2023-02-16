@@ -407,6 +407,75 @@ static const struct dev_pm_ops uio_dsi_mcc_dev_pm_ops = {
 	.runtime_resume = uio_dsi_mcc_runtime_nop,
 };
 
+/* export these or move hwspin_locks to uio device file uio.c*/
+int uio_dsi_mcc_tx_offsets(struct uio_device *idev, int *wr_offset,
+			   int *rd_offset)
+{
+	struct uio_dsi_mcc_platdata *priv = idev->info->priv;
+	struct hwspinlock *hwlock = priv->hwlock_tx;
+	struct uio_dsi_mcc_ctl *ctl = priv->ctlmem;
+	int err;
+	int ret = 0;
+
+	if (hwlock) {
+		err = hwspin_lock_timeout_in_atomic(hwlock, HWSPNLCK_TIMEOUT);
+		if (err) {
+			pr_err("%s can't get rx hwspinlock (%d)\n", __func__,
+			       err);
+			ret = -1;
+			goto hwunlock;
+		}
+	}
+	/* read offsets*/
+	if (!ctl) {
+		pr_err("%s mccctl not initalized\n", __func__);
+		ret = -1;
+		goto hwunlock;
+	}
+	*rd_offset = ctl->mcctx_rd;
+	*wr_offset = ctl->mcctx_wr;
+
+hwunlock:
+	if (hwlock)
+		hwspin_unlock_in_atomic(hwlock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(uio_dsi_mcc_tx_offsets);
+
+int uio_dsi_mcc_rx_offsets(struct uio_device *idev, int *wr_offset,
+			   int *rd_offset)
+{
+	struct uio_dsi_mcc_platdata *priv = idev->info->priv;
+	struct hwspinlock *hwlock = priv->hwlock_rx;
+	struct uio_dsi_mcc_ctl *ctl = priv->ctlmem;
+	int err;
+	int ret = 0;
+
+	if (hwlock) {
+		err = hwspin_lock_timeout_in_atomic(hwlock, HWSPNLCK_TIMEOUT);
+		if (err) {
+			pr_err("%s can't get rx hwspinlock (%d)\n", __func__,
+			       err);
+			ret = -1;
+			goto hwunlock;
+		}
+	}
+	/* read offsets*/
+	if (!ctl) {
+		pr_err("%s mccctl not initalized\n", __func__);
+		ret = -1;
+		goto hwunlock;
+	}
+	*rd_offset = ctl->mccrx_rd;
+	*wr_offset = ctl->mccrx_wr;
+
+hwunlock:
+	if (hwlock)
+		hwspin_unlock_in_atomic(hwlock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(uio_dsi_mcc_rx_offsets);
+
 #ifdef CONFIG_OF
 static struct of_device_id uio_of_genirq_match[] = {
 	{ .compatible = "datum-uio-mcc" },
