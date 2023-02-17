@@ -215,7 +215,7 @@ static ssize_t tx_offsets_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
 	struct uio_device *idev = dev_get_drvdata(dev);
-	int *rd_offset, *wr_offset;
+	int rd_offset, wr_offset;
 	int ret;
 
 	mutex_lock(&idev->info_lock);
@@ -224,12 +224,9 @@ static ssize_t tx_offsets_show(struct device *dev,
 		dev_err(dev, "the device has been unregistered\n");
 		goto out;
 	}
-
-	if (uio_dsi_mcc_tx_offsets(idev, rd_offset, wr_offset))
+	if (uio_dsi_mcc_tx_offsets(idev->info->priv, &rd_offset, &wr_offset))
 		goto out;
-
-	ret = sprintf(buf, "%d\n%d\n", *rd_offset, *wr_offset);
-
+	ret = sprintf(buf, "rd:%d, wr:%d\n", rd_offset, wr_offset);
 out:
 	mutex_unlock(&idev->info_lock);
 	return ret;
@@ -240,7 +237,7 @@ static ssize_t rx_offsets_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
 	struct uio_device *idev = dev_get_drvdata(dev);
-	int *rd_offset, *wr_offset;
+	int rd_offset, wr_offset;
 	int ret;
 
 	mutex_lock(&idev->info_lock);
@@ -249,12 +246,9 @@ static ssize_t rx_offsets_show(struct device *dev,
 		dev_err(dev, "the device has been unregistered\n");
 		goto out;
 	}
-
-	if (uio_dsi_mcc_rx_offsets(idev, rd_offset, wr_offset))
+	if (uio_dsi_mcc_rx_offsets(idev->info->priv, &rd_offset, &wr_offset))
 		goto out;
-
-	ret = sprintf(buf, "%d\n%d\n", *rd_offset, *wr_offset);
-
+	ret = sprintf(buf, "rd:%d, wr:%d\n", rd_offset, wr_offset);
 out:
 	mutex_unlock(&idev->info_lock);
 	return ret;

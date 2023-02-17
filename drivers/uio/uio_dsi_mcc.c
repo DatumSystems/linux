@@ -36,11 +36,11 @@
 #define DRIVER_NAME "uio_dsi_mcc"
 
 struct uio_dsi_mcc_ctl {
-	u16 mccrx_rd;
-	u16 mccrx_wr;
-	u16 mcctx_rd;
-	u16 mcctx_wr;
-};
+	void __iomem *mcctx_rd;
+	void __iomem *mcctx_wr;
+	void __iomem *mccrx_rd;
+	void __iomem *mccrx_wr;
+} __attribute__((packed));
 
 struct uio_dsi_mcc_platdata {
 	struct uio_info *uioinfo;
@@ -50,7 +50,7 @@ struct uio_dsi_mcc_platdata {
 	int hwlock_id_tx;
 	int hwlock_id_rx;
 	struct gpio_desc *tx_irq_gpio;
-	void __iomem *ctlmem;
+	struct uio_dsi_mcc_ctl ctl;
 	unsigned long flags;
 	struct platform_device *pdev;
 };
@@ -97,7 +97,6 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 {
 	struct uio_dsi_mcc_platdata *priv = dev_info->priv;
 	struct hwspinlock *hwlock;
-	struct uio_dsi_mcc_ctl *ctl = priv->ctlmem;
 
 	unsigned long flags;
 	int err;
@@ -130,7 +129,7 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 			}
 		}
 		/* update rd offset*/
-		ctl->mccrx_rd = control & 0x0000ffff;
+		iowrite32(control & 0x0000ffff, priv->ctl.mccrx_rd);
 		/* Clear rx interrupt if requested*/
 		if (control & 0x40000000) {
 			if (__test_and_clear_bit(UIO_IRQ_DISABLED,
@@ -152,10 +151,10 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 				goto hwunlock;
 			}
 		}
-		if (control & 0x20000000)
-			ctl->mcctx_rd = ctl->mcctx_wr = control & 0x0000ffff;
+		if (control & 0x20000000) // reset buffers
+			iowrite32(0x20000000, priv->ctl.mcctx_wr);
 		else
-			ctl->mcctx_wr = control & 0x0000ffff;
+			iowrite32(control & 0x0000ffff, priv->ctl.mcctx_wr);
 		/* Set tx interrupt if requested */
 		if (control & 0x40000000) {
 			// toggle irq pin for CM4
@@ -232,6 +231,8 @@ static int uio_dsi_mcc_probe(struct platform_device *pdev)
 			dev_err(dev, "Failed to get rx hwspinlock\n");
 			return ret;
 		}
+		dev_dbg(dev, "hwlocks tx(%d), rx(%d)\n", hwlock_id_tx,
+			hwlock_id_rx);
 
 		if (!of_property_read_string(node, "linux,uio-name", &name))
 			uioinfo->name = devm_kstrdup(dev, name, GFP_KERNEL);
@@ -336,10 +337,16 @@ static int uio_dsi_mcc_probe(struct platform_device *pdev)
 		if (!strcmp(uiomem->name, "mcc-ctl")) {
 			uiomem->internal_addr =
 				ioremap_wc(uiomem->addr, uiomem->size);
-			priv->ctlmem = uiomem->internal_addr;
+			priv->ctl.mcctx_rd = uiomem->internal_addr;
+			priv->ctl.mcctx_wr =
+				uiomem->internal_addr + sizeof(u32);
+			priv->ctl.mccrx_rd =
+				uiomem->internal_addr + 2 * sizeof(u32);
+			priv->ctl.mccrx_wr =
+				uiomem->internal_addr + 3 * sizeof(u32);
 		}
 
-		dev_dbg(&pdev->dev,
+		dev_dbg(dev,
 			"mem[%d], paddr=0x%08x, off=0x%08lx, size=0x%08x, iaddr=%p, name=%s\n",
 			i, uiomem->addr, uiomem->offs, uiomem->size,
 			uiomem->internal_addr, uiomem->name);
@@ -408,12 +415,10 @@ static const struct dev_pm_ops uio_dsi_mcc_dev_pm_ops = {
 };
 
 /* export these or move hwspin_locks to uio device file uio.c*/
-int uio_dsi_mcc_tx_offsets(struct uio_device *idev, int *wr_offset,
-			   int *rd_offset)
+int uio_dsi_mcc_tx_offsets(void *priv, int *wr_offset, int *rd_offset)
 {
-	struct uio_dsi_mcc_platdata *priv = idev->info->priv;
-	struct hwspinlock *hwlock = priv->hwlock_tx;
-	struct uio_dsi_mcc_ctl *ctl = priv->ctlmem;
+	struct uio_dsi_mcc_platdata *p = priv;
+	struct hwspinlock *hwlock = p->hwlock_tx;
 	int err;
 	int ret = 0;
 
@@ -427,27 +432,27 @@ int uio_dsi_mcc_tx_offsets(struct uio_device *idev, int *wr_offset,
 		}
 	}
 	/* read offsets*/
-	if (!ctl) {
+	if (!p->ctl.mcctx_rd || !p->ctl.mcctx_wr) {
 		pr_err("%s mccctl not initalized\n", __func__);
 		ret = -1;
 		goto hwunlock;
 	}
-	*rd_offset = ctl->mcctx_rd;
-	*wr_offset = ctl->mcctx_wr;
+	*rd_offset = ioread32(p->ctl.mcctx_rd);
+	*wr_offset = ioread32(p->ctl.mcctx_wr);
+	// *rd_offset = 123456789;
+	// *wr_offset = 987654321;
 
 hwunlock:
 	if (hwlock)
 		hwspin_unlock_in_atomic(hwlock);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(uio_dsi_mcc_tx_offsets);
+//EXPORT_SYMBOL_GPL(uio_dsi_mcc_tx_offsets);
 
-int uio_dsi_mcc_rx_offsets(struct uio_device *idev, int *wr_offset,
-			   int *rd_offset)
+int uio_dsi_mcc_rx_offsets(void *priv, int *wr_offset, int *rd_offset)
 {
-	struct uio_dsi_mcc_platdata *priv = idev->info->priv;
-	struct hwspinlock *hwlock = priv->hwlock_rx;
-	struct uio_dsi_mcc_ctl *ctl = priv->ctlmem;
+	struct uio_dsi_mcc_platdata *p = priv;
+	struct hwspinlock *hwlock = p->hwlock_rx;
 	int err;
 	int ret = 0;
 
@@ -461,20 +466,20 @@ int uio_dsi_mcc_rx_offsets(struct uio_device *idev, int *wr_offset,
 		}
 	}
 	/* read offsets*/
-	if (!ctl) {
+	if (!p->ctl.mccrx_rd || !p->ctl.mccrx_wr) {
 		pr_err("%s mccctl not initalized\n", __func__);
 		ret = -1;
 		goto hwunlock;
 	}
-	*rd_offset = ctl->mccrx_rd;
-	*wr_offset = ctl->mccrx_wr;
+	*rd_offset = ioread32(p->ctl.mccrx_rd);
+	*wr_offset = ioread32(p->ctl.mccrx_wr);
 
 hwunlock:
 	if (hwlock)
 		hwspin_unlock_in_atomic(hwlock);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(uio_dsi_mcc_rx_offsets);
+//EXPORT_SYMBOL_GPL(uio_dsi_mcc_rx_offsets);
 
 #ifdef CONFIG_OF
 static struct of_device_id uio_of_genirq_match[] = {
