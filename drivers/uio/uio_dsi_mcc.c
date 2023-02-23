@@ -36,8 +36,10 @@
 #define DRIVER_NAME "uio_dsi_mcc"
 
 struct uio_dsi_mcc_ctl {
+	void __iomem *mcctx_ctl;
 	void __iomem *mcctx_rd;
 	void __iomem *mcctx_wr;
+	void __iomem *mccrx_ctl;
 	void __iomem *mccrx_rd;
 	void __iomem *mccrx_wr;
 } __attribute__((packed));
@@ -106,11 +108,11 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 	/* The control integer is mapped as following:
 	 * MSB:  1 bit   : 1 = operation is rx
 	                 : 0 = operation is tx
-	 *       1 bit   : 1 = enable cm4 rx interrupt and update rx rd offset if operation is rx
-	 *                 1 = toggle cm4 tx interrupt and update tx wr offset if opeartion is tx
-	 *                 0 = disable cm4 rx interrupt and update rx rd offset if operation is rx
-	 *                 0 = update tx wr offset only, no cm4 interrupt toggle.
-	 *       1 bit     1 = reset tx offset (only if operation is tx)
+	 *       1 bit   : 0 = enable cm4 rx interrupt and update rx rd offset if operation is rx
+	 *                 1 = disable cm4 rx interrupt and update rx rd offset if operation is rx
+	 *                 0 = toggle cm4 tx interrupt and update tx wr offset if opeartion is tx
+	 *                 1 = update tx wr offset only, no cm4 interrupt toggle.
+	 *       1 bit     1 = reset tx offsets (only if operation is tx)
 	 *                 0 = nop
 	 *       13 bits : spare
 	 * LSB:  16 bits : new tx or rx offset
@@ -132,12 +134,12 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 		iowrite32(control & 0x0000ffff, priv->ctl.mccrx_rd);
 		/* Clear rx interrupt if requested*/
 		if (control & 0x40000000) {
+			if (!__test_and_set_bit(UIO_IRQ_DISABLED, &priv->flags))
+				disable_irq_nosync(dev_info->irq);
+		} else {
 			if (__test_and_clear_bit(UIO_IRQ_DISABLED,
 						 &priv->flags))
 				enable_irq(dev_info->irq);
-		} else {
-			if (!__test_and_set_bit(UIO_IRQ_DISABLED, &priv->flags))
-				disable_irq_nosync(dev_info->irq);
 		}
 	} else {
 		/* tx interrupt control*/
@@ -152,11 +154,15 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 			}
 		}
 		if (control & 0x20000000) // reset buffers
-			iowrite32(0x20000000, priv->ctl.mcctx_wr);
-		else
+		{
+			iowrite32(0x20000000, priv->ctl.mcctx_ctl);
+			iowrite32(0x00000000, priv->ctl.mcctx_wr);
+			iowrite32(0x00000000, priv->ctl.mcctx_rd);
+		} else {
 			iowrite32(control & 0x0000ffff, priv->ctl.mcctx_wr);
+		}
 		/* Set tx interrupt if requested */
-		if (control & 0x40000000) {
+		if (!(control & 0x40000000)) {
 			// toggle irq pin for CM4
 			gpiod_set_value(priv->tx_irq_gpio, 1);
 			gpiod_set_value(priv->tx_irq_gpio, 0);
@@ -337,13 +343,18 @@ static int uio_dsi_mcc_probe(struct platform_device *pdev)
 		if (!strcmp(uiomem->name, "mcc-ctl")) {
 			uiomem->internal_addr =
 				ioremap_wc(uiomem->addr, uiomem->size);
-			priv->ctl.mcctx_rd = uiomem->internal_addr;
+			priv->ctl.mcctx_ctl =
+				uiomem->internal_addr + 0 * sizeof(u32);
+			priv->ctl.mcctx_rd =
+				uiomem->internal_addr + 1 * sizeof(u32);
 			priv->ctl.mcctx_wr =
-				uiomem->internal_addr + sizeof(u32);
-			priv->ctl.mccrx_rd =
 				uiomem->internal_addr + 2 * sizeof(u32);
-			priv->ctl.mccrx_wr =
+			priv->ctl.mccrx_ctl =
 				uiomem->internal_addr + 3 * sizeof(u32);
+			priv->ctl.mccrx_rd =
+				uiomem->internal_addr + 4 * sizeof(u32);
+			priv->ctl.mccrx_wr =
+				uiomem->internal_addr + 5 * sizeof(u32);
 		}
 
 		dev_dbg(dev,
@@ -415,7 +426,7 @@ static const struct dev_pm_ops uio_dsi_mcc_dev_pm_ops = {
 };
 
 /* export these or move hwspin_locks to uio device file uio.c*/
-int uio_dsi_mcc_tx_offsets(void *priv, int *wr_offset, int *rd_offset)
+int uio_dsi_mcc_tx_offsets(void *priv, int *rd_offset, int *wr_offset)
 {
 	struct uio_dsi_mcc_platdata *p = priv;
 	struct hwspinlock *hwlock = p->hwlock_tx;
@@ -439,8 +450,6 @@ int uio_dsi_mcc_tx_offsets(void *priv, int *wr_offset, int *rd_offset)
 	}
 	*rd_offset = ioread32(p->ctl.mcctx_rd);
 	*wr_offset = ioread32(p->ctl.mcctx_wr);
-	// *rd_offset = 123456789;
-	// *wr_offset = 987654321;
 
 hwunlock:
 	if (hwlock)
@@ -449,7 +458,7 @@ hwunlock:
 }
 //EXPORT_SYMBOL_GPL(uio_dsi_mcc_tx_offsets);
 
-int uio_dsi_mcc_rx_offsets(void *priv, int *wr_offset, int *rd_offset)
+int uio_dsi_mcc_rx_offsets(void *priv, int *rd_offset, int *wr_offset)
 {
 	struct uio_dsi_mcc_platdata *p = priv;
 	struct hwspinlock *hwlock = p->hwlock_rx;
