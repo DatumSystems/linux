@@ -155,12 +155,15 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 				goto hwunlock;
 			}
 		}
-		if (control & TX_RESET_RQST) // reset buffers
-		{
-			iowrite32(TX_RESET_RQST, priv->ctl.mcctx_wr);
-			iowrite32(0x00000000, priv->ctl.mcctx_rd);
-		} else {
+		if (control & TX_RESET_RQST) {
+			printk("uio-tx_brmcc:  reset offsets\n");
+			 // reset buffers / CM4 reset reqeust flag
+			iowrite32(0, priv->ctl.mcctx_wr);
+			iowrite32(0, priv->ctl.mcctx_rd);
+			}
+		else {
 			iowrite32(control & 0x0000ffff, priv->ctl.mcctx_wr);
+			//printk("uio-tx_brmcc:  update mcctx_wr=%d\n", ioread32( priv->ctl.mcctx_wr));
 		}
 		/* Set tx interrupt if requested */
 		if (!(control & INTERRUPT_DISABLE)) {
@@ -445,8 +448,8 @@ int uio_dsi_mcc_tx_offsets(void *priv, int *rd_offset, int *wr_offset)
 		ret = -1;
 		goto hwunlock;
 	}
-	*rd_offset = ioread32(p->ctl.mcctx_rd);
-	*wr_offset = ioread32(p->ctl.mcctx_wr);
+	*rd_offset = ioread32(p->ctl.mcctx_rd) & 0xffff;
+	*wr_offset = ioread32(p->ctl.mcctx_wr) & 0xffff;
 
 hwunlock:
 	if (hwlock)
