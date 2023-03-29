@@ -32,14 +32,16 @@
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
 
+#define RX_nTX_FLAG 0x80000000
+#define INTERRUPT_DISABLE 0x40000000
+#define TX_RESET_RQST 0x20000000
+
 #define HWSPNLCK_TIMEOUT 1000 /* usec */
 #define DRIVER_NAME "uio_dsi_mcc"
 
 struct uio_dsi_mcc_ctl {
-	void __iomem *mcctx_ctl;
 	void __iomem *mcctx_rd;
 	void __iomem *mcctx_wr;
-	void __iomem *mccrx_ctl;
 	void __iomem *mccrx_rd;
 	void __iomem *mccrx_wr;
 } __attribute__((packed));
@@ -118,7 +120,7 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 	 * LSB:  16 bits : new tx or rx offset
 	 */
 
-	if (control & 0x80000000) {
+	if (control & RX_nTX_FLAG) {
 		hwlock = priv->hwlock_rx;
 		/* rx interrupt control*/
 		if (hwlock) {
@@ -133,7 +135,7 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 		/* update rd offset*/
 		iowrite32(control & 0x0000ffff, priv->ctl.mccrx_rd);
 		/* Clear rx interrupt if requested*/
-		if (control & 0x40000000) {
+		if (control & INTERRUPT_DISABLE) {
 			if (!__test_and_set_bit(UIO_IRQ_DISABLED, &priv->flags))
 				disable_irq_nosync(dev_info->irq);
 		} else {
@@ -153,16 +155,15 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 				goto hwunlock;
 			}
 		}
-		if (control & 0x20000000) // reset buffers
+		if (control & TX_RESET_RQST) // reset buffers
 		{
-			iowrite32(0x20000000, priv->ctl.mcctx_ctl);
-			iowrite32(0x00000000, priv->ctl.mcctx_wr);
+			iowrite32(TX_RESET_RQST, priv->ctl.mcctx_wr);
 			iowrite32(0x00000000, priv->ctl.mcctx_rd);
 		} else {
 			iowrite32(control & 0x0000ffff, priv->ctl.mcctx_wr);
 		}
 		/* Set tx interrupt if requested */
-		if (!(control & 0x40000000)) {
+		if (!(control & INTERRUPT_DISABLE)) {
 			// toggle irq pin for CM4
 			gpiod_set_value(priv->tx_irq_gpio, 1);
 			gpiod_set_value(priv->tx_irq_gpio, 0);
@@ -343,18 +344,14 @@ static int uio_dsi_mcc_probe(struct platform_device *pdev)
 		if (!strcmp(uiomem->name, "mcc-ctl")) {
 			uiomem->internal_addr =
 				ioremap_wc(uiomem->addr, uiomem->size);
-			priv->ctl.mcctx_ctl =
-				uiomem->internal_addr + 0 * sizeof(u32);
 			priv->ctl.mcctx_rd =
-				uiomem->internal_addr + 1 * sizeof(u32);
+				uiomem->internal_addr + 0 * sizeof(u32);
 			priv->ctl.mcctx_wr =
-				uiomem->internal_addr + 2 * sizeof(u32);
-			priv->ctl.mccrx_ctl =
-				uiomem->internal_addr + 3 * sizeof(u32);
+				uiomem->internal_addr + 1 * sizeof(u32);
 			priv->ctl.mccrx_rd =
-				uiomem->internal_addr + 4 * sizeof(u32);
+				uiomem->internal_addr + 2 * sizeof(u32);
 			priv->ctl.mccrx_wr =
-				uiomem->internal_addr + 5 * sizeof(u32);
+				uiomem->internal_addr + 3 * sizeof(u32);
 		}
 
 		dev_dbg(dev,
