@@ -34,7 +34,8 @@
 
 #define RX_nTX_FLAG 0x80000000
 #define INTERRUPT_DISABLE 0x40000000
-#define TX_RESET_RQST 0x20000000
+#define RESET_RQST_CM4_TO_CA7 0x20000000
+#define RESET_RQST_CA7_TO_CM4 0x10000000
 
 #define HWSPNLCK_TIMEOUT 1000 /* usec */
 #define DRIVER_NAME "uio_dsi_mcc"
@@ -114,8 +115,8 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 	 *                 1 = disable cm4 rx interrupt and update rx rd offset if operation is rx
 	 *                 0 = toggle cm4 tx interrupt and update tx wr offset if opeartion is tx
 	 *                 1 = update tx wr offset only, no cm4 interrupt toggle.
-	 *       1 bit     1 = reset tx offsets (only if operation is tx)
-	 *                 0 = nop
+	 *       1 bit     1 = reset request from CM4 to CA7
+	 *       1 bit     1 = reset reuest from CA& to CM4
 	 *       13 bits : spare
 	 * LSB:  16 bits : new tx or rx offset
 	 */
@@ -155,13 +156,11 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 				goto hwunlock;
 			}
 		}
-		if (control & TX_RESET_RQST) {
+		if (control & RESET_RQST_CA7_TO_CM4) {
 			printk("uio-tx_brmcc:  reset offsets\n");
-			 // reset buffers / CM4 reset reqeust flag
-			iowrite32(0, priv->ctl.mcctx_wr);
-			iowrite32(0, priv->ctl.mcctx_rd);
-			}
-		else {
+			// reset buffers / CM4 reset reqeust flag
+			iowrite32(RESET_RQST_CA7_TO_CM4, priv->ctl.mcctx_wr);
+		} else {
 			iowrite32(control & 0x0000ffff, priv->ctl.mcctx_wr);
 			//printk("uio-tx_brmcc:  update mcctx_wr=%d\n", ioread32( priv->ctl.mcctx_wr));
 		}
@@ -288,6 +287,7 @@ static int uio_dsi_mcc_probe(struct platform_device *pdev)
 			dev_err(dev, "missing tx irq gpio\n");
 			return -EINVAL;
 		}
+		gpiod_set_value(priv->tx_irq_gpio, 0);
 	}
 
 	/* mcc-rx irq gpio */
@@ -514,5 +514,6 @@ module_platform_driver(uio_dsi_mcc);
 
 MODULE_AUTHOR("Mark Carlin");
 MODULE_DESCRIPTION("Userspace I/O MCC platform driver with IRQ handling");
+MODULE_VERSION("0.0.1");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:" DRIVER_NAME);
