@@ -32,14 +32,17 @@
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
 
+#define RX_nTX_FLAG 0x80000000
+#define INTERRUPT_DISABLE 0x40000000
+#define RESET_RQST_CM4_TO_CA7 0x20000000
+#define RESET_RQST_CA7_TO_CM4 0x10000000
+
 #define HWSPNLCK_TIMEOUT 1000 /* usec */
 #define DRIVER_NAME "uio_dsi_mcc"
 
 struct uio_dsi_mcc_ctl {
-	void __iomem *mcctx_ctl;
 	void __iomem *mcctx_rd;
 	void __iomem *mcctx_wr;
-	void __iomem *mccrx_ctl;
 	void __iomem *mccrx_rd;
 	void __iomem *mccrx_wr;
 } __attribute__((packed));
@@ -112,13 +115,13 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 	 *                 1 = disable cm4 rx interrupt and update rx rd offset if operation is rx
 	 *                 0 = toggle cm4 tx interrupt and update tx wr offset if opeartion is tx
 	 *                 1 = update tx wr offset only, no cm4 interrupt toggle.
-	 *       1 bit     1 = reset tx offsets (only if operation is tx)
-	 *                 0 = nop
+	 *       1 bit     1 = reset request from CM4 to CA7
+	 *       1 bit     1 = reset reuest from CA& to CM4
 	 *       13 bits : spare
 	 * LSB:  16 bits : new tx or rx offset
 	 */
 
-	if (control & 0x80000000) {
+	if (control & RX_nTX_FLAG) {
 		hwlock = priv->hwlock_rx;
 		/* rx interrupt control*/
 		if (hwlock) {
@@ -133,7 +136,7 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 		/* update rd offset*/
 		iowrite32(control & 0x0000ffff, priv->ctl.mccrx_rd);
 		/* Clear rx interrupt if requested*/
-		if (control & 0x40000000) {
+		if (control & INTERRUPT_DISABLE) {
 			if (!__test_and_set_bit(UIO_IRQ_DISABLED, &priv->flags))
 				disable_irq_nosync(dev_info->irq);
 		} else {
@@ -153,16 +156,16 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 				goto hwunlock;
 			}
 		}
-		if (control & 0x20000000) // reset buffers
-		{
-			iowrite32(0x20000000, priv->ctl.mcctx_ctl);
-			iowrite32(0x00000000, priv->ctl.mcctx_wr);
-			iowrite32(0x00000000, priv->ctl.mcctx_rd);
+		if (control & RESET_RQST_CA7_TO_CM4) {
+			printk("uio-tx_brmcc:  reset offsets\n");
+			// reset buffers / CM4 reset reqeust flag
+			iowrite32(RESET_RQST_CA7_TO_CM4, priv->ctl.mcctx_wr);
 		} else {
 			iowrite32(control & 0x0000ffff, priv->ctl.mcctx_wr);
+			//printk("uio-tx_brmcc:  update mcctx_wr=%d\n", ioread32( priv->ctl.mcctx_wr));
 		}
 		/* Set tx interrupt if requested */
-		if (!(control & 0x40000000)) {
+		if (!(control & INTERRUPT_DISABLE)) {
 			// toggle irq pin for CM4
 			gpiod_set_value(priv->tx_irq_gpio, 1);
 			gpiod_set_value(priv->tx_irq_gpio, 0);
@@ -284,6 +287,7 @@ static int uio_dsi_mcc_probe(struct platform_device *pdev)
 			dev_err(dev, "missing tx irq gpio\n");
 			return -EINVAL;
 		}
+		gpiod_set_value(priv->tx_irq_gpio, 0);
 	}
 
 	/* mcc-rx irq gpio */
@@ -343,18 +347,14 @@ static int uio_dsi_mcc_probe(struct platform_device *pdev)
 		if (!strcmp(uiomem->name, "mcc-ctl")) {
 			uiomem->internal_addr =
 				ioremap_wc(uiomem->addr, uiomem->size);
-			priv->ctl.mcctx_ctl =
-				uiomem->internal_addr + 0 * sizeof(u32);
 			priv->ctl.mcctx_rd =
-				uiomem->internal_addr + 1 * sizeof(u32);
+				uiomem->internal_addr + 0 * sizeof(u32);
 			priv->ctl.mcctx_wr =
-				uiomem->internal_addr + 2 * sizeof(u32);
-			priv->ctl.mccrx_ctl =
-				uiomem->internal_addr + 3 * sizeof(u32);
+				uiomem->internal_addr + 1 * sizeof(u32);
 			priv->ctl.mccrx_rd =
-				uiomem->internal_addr + 4 * sizeof(u32);
+				uiomem->internal_addr + 2 * sizeof(u32);
 			priv->ctl.mccrx_wr =
-				uiomem->internal_addr + 5 * sizeof(u32);
+				uiomem->internal_addr + 3 * sizeof(u32);
 		}
 
 		dev_dbg(dev,
@@ -448,8 +448,8 @@ int uio_dsi_mcc_tx_offsets(void *priv, int *rd_offset, int *wr_offset)
 		ret = -1;
 		goto hwunlock;
 	}
-	*rd_offset = ioread32(p->ctl.mcctx_rd);
-	*wr_offset = ioread32(p->ctl.mcctx_wr);
+	*rd_offset = ioread32(p->ctl.mcctx_rd) & 0xffff;
+	*wr_offset = ioread32(p->ctl.mcctx_wr) & 0xffff;
 
 hwunlock:
 	if (hwlock)
@@ -514,5 +514,6 @@ module_platform_driver(uio_dsi_mcc);
 
 MODULE_AUTHOR("Mark Carlin");
 MODULE_DESCRIPTION("Userspace I/O MCC platform driver with IRQ handling");
+MODULE_VERSION("0.0.1");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:" DRIVER_NAME);
