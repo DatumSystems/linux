@@ -2,7 +2,7 @@
 VERSION = 5
 PATCHLEVEL = 15
 SUBLEVEL = 118
-EXTRAVERSION = -datum.1
+EXTRAVERSION = -datum.1.fifo-fault.1
 NAME = Trick or Treat
 
 # *DOCUMENTATION*
