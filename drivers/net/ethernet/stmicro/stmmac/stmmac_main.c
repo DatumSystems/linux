@@ -6297,9 +6297,13 @@ static int stmmac_vlan_rx_add_vid(struct net_device *ndev, __be16 proto, u16 vid
 	}
 
 	if (priv->hw->num_vlan) {
-		ret = stmmac_add_hw_vlan_rx_fltr(priv, ndev, priv->hw, proto, vid);
-		if (ret)
+		if(priv->hw->vlan_filter[0] & GENMASK(15, 0)) {
 			goto err_pm_put;
+		}
+		else {
+			stmmac_add_hw_vlan_rx_fltr(priv, ndev, priv->hw, proto, vid);
+			netdev_info(ndev, "HW VLAN Filter Set To %d\n", vid);
+		}
 	}
 err_pm_put:
 	pm_runtime_put(priv->device);
