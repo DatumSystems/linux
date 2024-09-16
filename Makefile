@@ -2,7 +2,7 @@
 VERSION = 5
 PATCHLEVEL = 15
 SUBLEVEL = 145
-EXTRAVERSION = -datum.2
+EXTRAVERSION = -datum.2-dma
 NAME = Trick or Treat
 
 # *DOCUMENTATION*

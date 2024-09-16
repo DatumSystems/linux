@@ -1174,8 +1174,10 @@ static irqreturn_t stm32_dma_chan_irq(int irq, void *devid)
 		status &= ~STM32_DMA_FEI;
 		if (sfcr & STM32_DMA_SFCR_FEIE) {
 			if (!(scr & STM32_DMA_SCR_EN) &&
-			    !(status & STM32_DMA_TCI))
-				dev_err(chan2dev(chan), "FIFO Error\n");
+			    !(status & STM32_DMA_TCI)) {
+					dev_err(chan2dev(chan), "FIFO Error\n");
+					dev_err(chan2dev(chan), "    status: 0x%08x, sfcr: 0x%08x, scr: 0x%08x\n", status, sfcr, scr);
+				}
 			else
 				dev_dbg(chan2dev(chan), "FIFO over/underrun\n");
 		}
