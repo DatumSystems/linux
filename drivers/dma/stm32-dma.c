@@ -1176,7 +1176,7 @@ static irqreturn_t stm32_dma_chan_irq(int irq, void *devid)
 			if (!(scr & STM32_DMA_SCR_EN) &&
 			    !(status & STM32_DMA_TCI)) {
 					dev_err(chan2dev(chan), "FIFO Error\n");
-					dev_err(chan2dev(chan), "    status: 0x%08x, sfcr: 0x%08x, scr: 0x%08x\n", status, sfcr, scr);
+					dev_err(chan2dev(chan), "    id:%d, status:0x%08x, sfcr:0x%08x, scr:0x%08x\n", chan->id, status, sfcr, scr);
 				}
 			else
 				dev_dbg(chan2dev(chan), "FIFO over/underrun\n");
@@ -1470,6 +1470,7 @@ static int stm32_dma_set_xfer_param(struct stm32_dma_chan *chan,
 
 	stm32_dma_set_fifo_config(chan, src_best_burst, dst_best_burst);
 
+	if(chan->id == 0) dma_scr |= STM32_DMA_SCR_PL(3); // Set priority level to 3 for channel 0
 	/* Set DMA control register */
 	chan->chan_reg.dma_scr &= ~(STM32_DMA_SCR_DIR_MASK |
 			STM32_DMA_SCR_PSIZE_MASK | STM32_DMA_SCR_MSIZE_MASK |
