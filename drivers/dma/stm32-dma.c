@@ -114,8 +114,8 @@
 #define STM32_DMA_PRIORITY_MEDIUM	0x01
 #define STM32_DMA_PRIORITY_HIGH		0x02
 #define STM32_DMA_PRIORITY_VERY_HIGH	0x03
-
 /* DMA FIFO threshold selection */
+
 #define STM32_DMA_FIFO_THRESHOLD_1QUARTERFULL		0x00
 #define STM32_DMA_FIFO_THRESHOLD_HALFFULL		0x01
 #define STM32_DMA_FIFO_THRESHOLD_3QUARTERSFULL		0x02
@@ -1168,7 +1168,10 @@ static irqreturn_t stm32_dma_chan_irq(int irq, void *devid)
 	status = stm32_dma_irq_status(chan);
 	scr = stm32_dma_read(dmadev, STM32_DMA_SCR(chan->id));
 	sfcr = stm32_dma_read(dmadev, STM32_DMA_SFCR(chan->id));
-
+	if(chan->id == 0)
+	{
+		dev_err(chan2dev(chan),"DMA channel 0 IRQ: status=0x%08x, scr=0x%08x, sfcr=0x%08x\n", status, scr, sfcr);
+	}
 	if (status & STM32_DMA_FEI) {
 		stm32_dma_irq_clear(chan, STM32_DMA_FEI);
 		status &= ~STM32_DMA_FEI;
