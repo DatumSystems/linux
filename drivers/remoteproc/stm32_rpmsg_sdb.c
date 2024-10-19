@@ -228,6 +228,7 @@ static int rpmsg_sdb_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 
 	/* Increment for number of requested buffer */
+	printk("rpmsg_sdb_mmap:  LastBufferId = %d\n", LastBufferId);
 	LastBufferId++;
 
 	return 0;
@@ -272,7 +273,8 @@ static int rpmsg_sdb_close(struct inode *inode, struct file *file)
 {
 	struct rpmsg_sdb_t *_rpmsg_sdb;
 	struct sdb_buf_t *pos, *next;
-
+	int i = 1;
+	printk("rpmsg_sdb_close:  enter\n");
 	_rpmsg_sdb = container_of(file->private_data, struct rpmsg_sdb_t,
 												mdev);
 
@@ -282,6 +284,7 @@ static int rpmsg_sdb_close(struct inode *inode, struct file *file)
 		//dma_free_wc(rpmsg_sdb_dev, pos->size, pos->vaddr,
 		//			pos->paddr);
 		// Use for non-DMA (memcpy) transfers
+		printk("rpmsg_sdb_close:  Freeing buffer %d\n", i++);
 		dma_free_coherent(rpmsg_sdb_dev, pos->size, pos->vaddr,
 					pos->paddr);
 		/* Remove the buffer from the list */
