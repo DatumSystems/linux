@@ -36,7 +36,9 @@
 #include <net/genetlink.h>
 #include <net/sock.h>
 
-#define PHY_STATE_TIME	HZ
+// #define PHY_STATE_TIME	HZ
+// 100 ms polling interval
+#define PHY_STATE_TIME	10
 
 #define PHY_STATE_STR(_state)			\
 	case PHY_##_state:			\
