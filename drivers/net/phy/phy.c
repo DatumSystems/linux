@@ -1206,6 +1206,9 @@ void phy_state_machine(struct work_struct *work)
 	else if (do_suspend)
 		phy_suspend(phydev);
 
+	if (err < 0)
+		printk("phydev error: err=%d, port=%d\n", err, phydev->port);
+	
 	if (err == -ENODEV)
 		return;
 
