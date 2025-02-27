@@ -2,7 +2,7 @@
 VERSION = 5
 PATCHLEVEL = 15
 SUBLEVEL = 145
-EXTRAVERSION = -datum.2.spi2dbg.4
+EXTRAVERSION = -datum.2.spi2dbg.7
 NAME = Trick or Treat
 
 # *DOCUMENTATION*

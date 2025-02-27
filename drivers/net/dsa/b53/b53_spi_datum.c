@@ -139,7 +139,7 @@ static int b53_spi_prepare_reg_read(struct spi_device *spi, u8 reg)
 	if (ret)
 		return ret;
 
-	for (retry_count = 0; retry_count < 10; retry_count++) {
+	for (retry_count = 0; retry_count < 100; retry_count++) {
 		ret = b53_spi_read_reg(spi, B53_SPI_STATUS, &rxbuf, 1);
 		if (ret)
 			return ret;
@@ -150,7 +150,11 @@ static int b53_spi_prepare_reg_read(struct spi_device *spi, u8 reg)
 		mdelay(1);
 	}
 
-	if (retry_count == 10) {
+
+	if (retry_count > 10)
+		printk("b53_spi_prepare_reg_read, #reads=%d\n", retry_count);
+
+	if (retry_count == 100) {
 		printk("b53_spi_prepare_reg_read timeout, reg=0x%02x\n", reg);
 		return -EIO;
 	}
