@@ -139,7 +139,7 @@ static int b53_spi_prepare_reg_read(struct spi_device *spi, u8 reg)
 	if (ret)
 		return ret;
 
-	for (retry_count = 0; retry_count < 100; retry_count++) {
+	for (retry_count = 0; retry_count < 10; retry_count++) {
 		ret = b53_spi_read_reg(spi, B53_SPI_STATUS, &rxbuf, 1);
 		if (ret)
 			return ret;
@@ -150,11 +150,7 @@ static int b53_spi_prepare_reg_read(struct spi_device *spi, u8 reg)
 		mdelay(1);
 	}
 
-
-	if (retry_count > 10)
-		printk("b53_spi_prepare_reg_read, #reads=%d\n", retry_count);
-
-	if (retry_count == 100) {
+	if (retry_count == 10) {
 		printk("b53_spi_prepare_reg_read timeout, reg=0x%02x\n", reg);
 		return -EIO;
 	}
@@ -166,19 +162,35 @@ static int b53_spi_read(struct b53_device *dev, u8 page, u8 reg, u8 *data,
 			unsigned int len)
 {
 	struct spi_device *spi = dev->priv;
+	int retry_count;
 	int ret;
 
 	datum_b53_spi_mutex_lock();
-	ret = b53_prepare_reg_access(spi, page);
-	if (ret) {
-		printk("b53_spi_read->b53_prepare_reg_access EIO: page=0x%02x reg=0x%02x\n", page, reg);
-		return ret;
+	for (retry_count = 0; retry_count < 5; retry_count++) {
+		ret = b53_prepare_reg_access(spi, page);
+		if (ret) {
+			printk("b53_spi_read->b53_prepare_reg_access EIO: page=0x%02x reg=0x%02x\n", page, reg);
+			dev_err(dev->dev, "b53_spi_read->b53_prepare_reg_access FAIL attempt %d/5\n", retry_count);
+			b53_spi_set_page(spi, page);
+			mdelay(2);
+			continue;
+		}
+
+		ret = b53_spi_prepare_reg_read(spi, reg);
+		if (ret) {
+			printk("b53_spi_read->b53_spi_prepare_reg_read EIO: page=0x%02x reg=0x%02x\n", page, reg);
+			dev_err(dev->dev, "b53_spi_read->b53_spi_prepare_reg_read FAIL attempt %d/5\n", retry_count);
+			b53_spi_set_page(spi, page);
+			mdelay(2);
+			continue;
+		}
+		break;
 	}
 
-	ret = b53_spi_prepare_reg_read(spi, reg);
-	if (ret) {
-		printk("b53_spi_read->b53_spi_prepare_reg_read EIO: page=0x%02x reg=0x%02x\n", page, reg);
-		return ret;
+	if (retry_count == 5) {
+		dev_err(dev->dev, "b53_spi_read FAILED\n");
+		datum_b53_spi_mutex_unlock(spi->dev.parent->parent);
+		return -EIO;
 	}
 
 	ret = b53_spi_read_reg(spi, B53_SPI_DATA, data, len);
