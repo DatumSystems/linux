@@ -36,9 +36,7 @@
 #include <net/genetlink.h>
 #include <net/sock.h>
 
-// #define PHY_STATE_TIME	HZ
-// 100 ms polling interval
-#define PHY_STATE_TIME	10
+#define PHY_STATE_TIME	HZ
 
 #define PHY_STATE_STR(_state)			\
 	case PHY_##_state:			\
@@ -1206,9 +1204,6 @@ void phy_state_machine(struct work_struct *work)
 	else if (do_suspend)
 		phy_suspend(phydev);
 
-	if (err < 0)
-		printk("phydev error: err=%d, port=%d\n", err, phydev->port);
-	
 	if (err == -ENODEV)
 		return;
 

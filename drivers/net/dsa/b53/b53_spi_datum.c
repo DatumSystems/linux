@@ -91,20 +91,18 @@ static inline int b53_spi_clear_status(struct spi_device *spi)
 
 	for (i = 0; i < 10; i++) {
 		ret = b53_spi_read_reg(spi, B53_SPI_STATUS, &rxbuf, 1);
-		if (ret) {
-			printk("b53_spi_clear_status->b53_spi_read_reg error ret=%d\n", ret);
+		if (ret)
 			return ret;
-		}
+
 		if (!(rxbuf & B53_SPI_CMD_SPIF))
 			break;
 
 		mdelay(1);
 	}
 
-	if (i == 10) {
-		printk("b53_spi_clear_status timeout, reg=0x%02x\n", rxbuf);
+	if (i == 10) 
 		return -EIO;
-	}
+
 	return 0;
 }
 
@@ -150,10 +148,8 @@ static int b53_spi_prepare_reg_read(struct spi_device *spi, u8 reg)
 		mdelay(1);
 	}
 
-	if (retry_count == 10) {
-		printk("b53_spi_prepare_reg_read timeout, reg=0x%02x\n", reg);
+	if (retry_count == 10)
 		return -EIO;
-	}
 
 	return 0;
 }
@@ -169,8 +165,7 @@ static int b53_spi_read(struct b53_device *dev, u8 page, u8 reg, u8 *data,
 	for (retry_count = 0; retry_count < 5; retry_count++) {
 		ret = b53_prepare_reg_access(spi, page);
 		if (ret) {
-			printk("b53_spi_read->b53_prepare_reg_access EIO: page=0x%02x reg=0x%02x\n", page, reg);
-			dev_err(dev->dev, "b53_spi_read->b53_prepare_reg_access FAIL attempt %d/5\n", retry_count);
+			dev_warn(dev->dev, "b53_spi_read->b53_prepare_reg_access error(%d) attempt %d/5\n", ret, retry_count);
 			b53_spi_set_page(spi, page);
 			mdelay(2);
 			continue;
@@ -178,8 +173,7 @@ static int b53_spi_read(struct b53_device *dev, u8 page, u8 reg, u8 *data,
 
 		ret = b53_spi_prepare_reg_read(spi, reg);
 		if (ret) {
-			printk("b53_spi_read->b53_spi_prepare_reg_read EIO: page=0x%02x reg=0x%02x\n", page, reg);
-			dev_err(dev->dev, "b53_spi_read->b53_spi_prepare_reg_read FAIL attempt %d/5\n", retry_count);
+			dev_err(dev->dev, "b53_spi_read->b53_spi_prepare_reg_read error(%d) attempt %d/5\n", ret, retry_count);
 			b53_spi_set_page(spi, page);
 			mdelay(2);
 			continue;
@@ -266,10 +260,8 @@ static int b53_spi_write8(struct b53_device *dev, u8 page, u8 reg, u8 value)
 
 	datum_b53_spi_mutex_lock();
 	ret = b53_prepare_reg_access(spi, page);
-	if (ret) {
-		printk("b53_spi_write8->b53_prepare_reg_access EIO: page=0x%02x reg=0x%02x\n", page, reg);
+	if (ret)
 		return ret;
-	}
 
 	txbuf[0] = B53_SPI_CMD_NORMAL | B53_SPI_CMD_WRITE;
 	txbuf[1] = reg;
@@ -291,10 +283,8 @@ static int b53_spi_write16(struct b53_device *dev, u8 page, u8 reg, u16 value)
 
 	datum_b53_spi_mutex_lock();
 	ret = b53_prepare_reg_access(spi, page);
-	if (ret) {
-		printk("b53_spi_write16->b53_prepare_reg_access EIO: page=0x%02x reg=0x%02x\n", page, reg);
+	if (ret)
 		return ret;
-	}
 
 	txbuf[0] = B53_SPI_CMD_NORMAL | B53_SPI_CMD_WRITE;
 	txbuf[1] = reg;
@@ -316,10 +306,8 @@ static int b53_spi_write32(struct b53_device *dev, u8 page, u8 reg, u32 value)
 
 	datum_b53_spi_mutex_lock();
 	ret = b53_prepare_reg_access(spi, page);
-	if (ret) {
-		printk("b53_spi_write32->b53_prepare_reg_access EIO: page=0x%02x reg=0x%02x\n", page, reg);
+	if (ret)
 		return ret;
-	}
 
 	txbuf[0] = B53_SPI_CMD_NORMAL | B53_SPI_CMD_WRITE;
 	txbuf[1] = reg;
@@ -341,10 +329,8 @@ static int b53_spi_write48(struct b53_device *dev, u8 page, u8 reg, u64 value)
 
 	datum_b53_spi_mutex_lock();
 	ret = b53_prepare_reg_access(spi, page);
-	if (ret) {
-		printk("b53_spi_write48->b53_prepare_reg_access EIO: page=0x%02x reg=0x%02x\n", page, reg);
+	if (ret)
 		return ret;
-	}
 
 	txbuf[0] = B53_SPI_CMD_NORMAL | B53_SPI_CMD_WRITE;
 	txbuf[1] = reg;
@@ -366,10 +352,8 @@ static int b53_spi_write64(struct b53_device *dev, u8 page, u8 reg, u64 value)
 
 	datum_b53_spi_mutex_lock();
 	ret = b53_prepare_reg_access(spi, page);
-	if (ret) {
-		printk("b53_spi_write48->b53_spi_write64 EIO: page=0x%02x reg=0x%02x\n", page, reg);
+	if (ret)
 		return ret;
-	}
 
 	txbuf[0] = B53_SPI_CMD_NORMAL | B53_SPI_CMD_WRITE;
 	txbuf[1] = reg;
