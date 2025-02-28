@@ -165,7 +165,7 @@ static int b53_spi_read(struct b53_device *dev, u8 page, u8 reg, u8 *data,
 	for (retry_count = 0; retry_count < 5; retry_count++) {
 		ret = b53_prepare_reg_access(spi, page);
 		if (ret) {
-			dev_warn(dev->dev, "b53_spi_read->b53_prepare_reg_access error(%d) attempt %d/5\n", ret, retry_count);
+			dev_warn(dev->dev, "b53_spi_read->b53_prepare_reg_access error(%d) attempt %d/5\n", ret, retry_count + 1);
 			b53_spi_set_page(spi, page);
 			mdelay(2);
 			continue;
@@ -173,7 +173,7 @@ static int b53_spi_read(struct b53_device *dev, u8 page, u8 reg, u8 *data,
 
 		ret = b53_spi_prepare_reg_read(spi, reg);
 		if (ret) {
-			dev_err(dev->dev, "b53_spi_read->b53_spi_prepare_reg_read error(%d) attempt %d/5\n", ret, retry_count);
+			dev_err(dev->dev, "b53_spi_read->b53_spi_prepare_reg_read error(%d) attempt %d/5\n", ret, retry_count + 1);
 			b53_spi_set_page(spi, page);
 			mdelay(2);
 			continue;
