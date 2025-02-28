@@ -100,7 +100,7 @@ static inline int b53_spi_clear_status(struct spi_device *spi)
 		mdelay(1);
 	}
 
-	if (i == 10) 
+	if (i == 10)
 		return -EIO;
 
 	return 0;
