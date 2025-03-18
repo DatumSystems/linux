@@ -1,0 +1,19 @@
+{
+	"folders": [
+		{
+			"uri": "vscode-remote://wsl+ubuntu-22.04/home/mcarlin/dev/brick/br/github/datum/linux"
+		}
+	],
+	"remoteAuthority": "wsl+Ubuntu-22.04",
+	"settings": {
+		"clangd.checkUpdates": true,
+
+		"editor.stickyTabStops": true,
+		"clangd.enableCodeCompletion": false,
+		"clangd.enableHover": false,
+		"editor.inlayHints.enabled": "off",
+		"clangd.arguments": [
+			"--enable-config"
+		]
+	}
+}

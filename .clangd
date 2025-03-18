@@ -1,0 +1,6 @@
+CompileFlags:
+  Add: -Wno-unknown-warning-option
+  Remove:
+    - -fno-ipa-sra
+    - -fno-allow-store-data-races
+    - -fconserve-stack

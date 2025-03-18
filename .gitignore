@@ -91,6 +91,7 @@ modules.order
 # We don't want to ignore the following even if they are dot-files
 #
 !.clang-format
+!.clangd
 !.cocciconfig
 !.get_maintainer.ignore
 !.gitattributes
@@ -157,7 +158,7 @@ x509.genkey
 *.kdev4
 
 # Clang's compilation database file
-/compile_commands.json
+# /compile_commands.json
 
 # Documentation toolchain
 sphinx_*/
