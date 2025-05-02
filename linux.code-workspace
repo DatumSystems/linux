@@ -9,8 +9,8 @@
 		"clangd.checkUpdates": true,
 
 		"editor.stickyTabStops": true,
-		"clangd.enableCodeCompletion": false,
-		"clangd.enableHover": false,
+		"clangd.enableCodeCompletion": true,
+		"clangd.enableHover": true,
 		"editor.inlayHints.enabled": "off",
 		"clangd.arguments": [
 			"--enable-config"
