@@ -2084,7 +2084,10 @@ static int stm32_spi_probe(struct platform_device *pdev)
 	}
 
 	ctrl->dev.of_node = pdev->dev.of_node;
-	ctrl->auto_runtime_pm = true;
+	/* Disable rutime power management
+	 * ctrl->auto_runtime_pm = true;
+	 */
+	ctrl->auto_runtime_pm = false;
 	ctrl->bus_num = pdev->id;
 	ctrl->mode_bits = SPI_CPHA | SPI_CPOL | SPI_CS_HIGH | SPI_LSB_FIRST |
 			  SPI_3WIRE;
@@ -2128,13 +2131,13 @@ static int stm32_spi_probe(struct platform_device *pdev)
 	if (spi->dma_tx || spi->dma_rx)
 		ctrl->can_dma = stm32_spi_can_dma;
 
-	pm_runtime_set_autosuspend_delay(&pdev->dev,
-					 STM32_SPI_AUTOSUSPEND_DELAY);
-	pm_runtime_use_autosuspend(&pdev->dev);
-	pm_runtime_set_active(&pdev->dev);
-	pm_runtime_get_noresume(&pdev->dev);
-	pm_runtime_enable(&pdev->dev);
-
+	/* Disable runtime power management 
+	 * pm_runtime_set_autosuspend_delay(&pdev->dev, STM32_SPI_AUTOSUSPEND_DELAY);
+	 * pm_runtime_use_autosuspend(&pdev->dev);
+	 * pm_runtime_set_active(&pdev->dev);
+	 * pm_runtime_get_noresume(&pdev->dev);
+	 * pm_runtime_enable(&pdev->dev);
+	 */
 	ret = spi_register_controller(ctrl);
 	if (ret) {
 		dev_err(&pdev->dev, "spi controller registration failed: %d\n",
@@ -2142,8 +2145,10 @@ static int stm32_spi_probe(struct platform_device *pdev)
 		goto err_pm_disable;
 	}
 
-	pm_runtime_mark_last_busy(&pdev->dev);
-	pm_runtime_put_autosuspend(&pdev->dev);
+	/* Disable runtime power management 
+	 * pm_runtime_mark_last_busy(&pdev->dev);
+	 * pm_runtime_put_autosuspend(&pdev->dev);
+	 */
 
 	dev_info(&pdev->dev, "driver initialized (%s mode)\n",
 		 STM32_SPI_MASTER_MODE(spi) ? "master" : "slave");
@@ -2151,10 +2156,12 @@ static int stm32_spi_probe(struct platform_device *pdev)
 	return 0;
 
 err_pm_disable:
-	pm_runtime_disable(&pdev->dev);
-	pm_runtime_put_noidle(&pdev->dev);
-	pm_runtime_set_suspended(&pdev->dev);
-	pm_runtime_dont_use_autosuspend(&pdev->dev);
+	/* Disable runtime power management 
+	 * pm_runtime_disable(&pdev->dev);
+	 * pm_runtime_put_noidle(&pdev->dev);
+	 * pm_runtime_set_suspended(&pdev->dev);
+	 * pm_runtime_dont_use_autosuspend(&pdev->dev);
+	 */
 err_dma_release:
 	if (spi->dma_tx)
 		dma_release_channel(spi->dma_tx);
@@ -2171,15 +2178,19 @@ static int stm32_spi_remove(struct platform_device *pdev)
 	struct spi_controller *ctrl = platform_get_drvdata(pdev);
 	struct stm32_spi *spi = spi_controller_get_devdata(ctrl);
 
-	pm_runtime_get_sync(&pdev->dev);
+	/* Disable runtime power management 
+	 * pm_runtime_get_sync(&pdev->dev);
+	 */
 
 	spi_unregister_controller(ctrl);
 	spi->cfg->disable(spi);
 
-	pm_runtime_disable(&pdev->dev);
-	pm_runtime_put_noidle(&pdev->dev);
-	pm_runtime_set_suspended(&pdev->dev);
-	pm_runtime_dont_use_autosuspend(&pdev->dev);
+	/* Disable runtime power management 
+	 * pm_runtime_disable(&pdev->dev);
+	 * pm_runtime_put_noidle(&pdev->dev);
+	 * pm_runtime_set_suspended(&pdev->dev);
+	 * pm_runtime_dont_use_autosuspend(&pdev->dev);
+	 */
 
 	if (ctrl->dma_tx)
 		dma_release_channel(ctrl->dma_tx);

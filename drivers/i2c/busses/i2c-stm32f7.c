@@ -1679,9 +1679,11 @@ static int stm32f7_i2c_xfer(struct i2c_adapter *i2c_adap,
 	i2c_dev->msg_id = 0;
 	f7_msg->smbus = false;
 
-	ret = pm_runtime_resume_and_get(i2c_dev->dev);
-	if (ret < 0)
-		return ret;
+	/* Disable runtime power management 
+	 * ret = pm_runtime_resume_and_get(i2c_dev->dev);
+	 * if (ret < 0)
+	 *	return ret;
+	 */
 
 	ret = stm32f7_i2c_wait_free_bus(i2c_dev);
 	if (ret)
@@ -1716,8 +1718,10 @@ static int stm32f7_i2c_xfer(struct i2c_adapter *i2c_adap,
 	}
 
 pm_free:
-	pm_runtime_mark_last_busy(i2c_dev->dev);
-	pm_runtime_put_autosuspend(i2c_dev->dev);
+	/* Disable runtime power management 
+	 * pm_runtime_mark_last_busy(i2c_dev->dev);
+	 * pm_runtime_put_autosuspend(i2c_dev->dev);
+	 */
 
 	return (ret < 0) ? ret : num;
 }
@@ -1739,9 +1743,11 @@ static int stm32f7_i2c_smbus_xfer(struct i2c_adapter *adapter, u16 addr,
 	f7_msg->read_write = read_write;
 	f7_msg->smbus = true;
 
-	ret = pm_runtime_resume_and_get(dev);
-	if (ret < 0)
-		return ret;
+	/* Disable runtime power management 
+	 * ret = pm_runtime_resume_and_get(dev);
+	 * if (ret < 0)
+	 * 	return ret;
+	 */
 
 	ret = stm32f7_i2c_wait_free_bus(i2c_dev);
 	if (ret)
@@ -1807,8 +1813,10 @@ static int stm32f7_i2c_smbus_xfer(struct i2c_adapter *adapter, u16 addr,
 	}
 
 pm_free:
-	pm_runtime_mark_last_busy(dev);
-	pm_runtime_put_autosuspend(dev);
+	/* Disable runtime power management 
+	 * pm_runtime_mark_last_busy(dev);
+	 * pm_runtime_put_autosuspend(dev);
+	 */
 	return ret;
 }
 
@@ -1852,9 +1860,11 @@ static int stm32f7_i2c_reg_slave(struct i2c_client *slave)
 	if (ret)
 		return ret;
 
-	ret = pm_runtime_resume_and_get(dev);
-	if (ret < 0)
-		return ret;
+	/* Disable runtime power management 
+	 * ret = pm_runtime_resume_and_get(dev);
+	 * if (ret < 0)
+	 * 	return ret;
+	 */
 
 	if (!stm32f7_i2c_is_slave_registered(i2c_dev))
 		stm32f7_i2c_enable_wakeup(i2c_dev, true);
@@ -1914,8 +1924,10 @@ pm_free:
 	if (!stm32f7_i2c_is_slave_registered(i2c_dev))
 		stm32f7_i2c_enable_wakeup(i2c_dev, false);
 
-	pm_runtime_mark_last_busy(dev);
-	pm_runtime_put_autosuspend(dev);
+	/* Disable runtime power management 
+	 * pm_runtime_mark_last_busy(dev);
+	 * pm_runtime_put_autosuspend(dev);
+	 */
 
 	return ret;
 }
@@ -1933,9 +1945,11 @@ static int stm32f7_i2c_unreg_slave(struct i2c_client *slave)
 
 	WARN_ON(!i2c_dev->slave[id]);
 
-	ret = pm_runtime_resume_and_get(i2c_dev->dev);
-	if (ret < 0)
-		return ret;
+	/* Disable runtime power management 
+	 * ret = pm_runtime_resume_and_get(i2c_dev->dev);
+	 * if (ret < 0)
+	 * 	return ret;
+	 */
 
 	if (id == 1) {
 		mask = STM32F7_I2C_OAR1_OA1EN;
@@ -1952,8 +1966,10 @@ static int stm32f7_i2c_unreg_slave(struct i2c_client *slave)
 		stm32f7_i2c_enable_wakeup(i2c_dev, false);
 	}
 
-	pm_runtime_mark_last_busy(i2c_dev->dev);
-	pm_runtime_put_autosuspend(i2c_dev->dev);
+	/* Disable runtime power management 
+	 * pm_runtime_mark_last_busy(i2c_dev->dev);
+	 * pm_runtime_put_autosuspend(i2c_dev->dev);
+	 */
 
 	return 0;
 }
@@ -2231,13 +2247,13 @@ static int stm32f7_i2c_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, i2c_dev);
 
-	pm_runtime_set_autosuspend_delay(i2c_dev->dev,
-					 STM32F7_AUTOSUSPEND_DELAY);
-	pm_runtime_use_autosuspend(i2c_dev->dev);
-	pm_runtime_set_active(i2c_dev->dev);
-	pm_runtime_enable(i2c_dev->dev);
-
-	pm_runtime_get_noresume(&pdev->dev);
+	/* Disable runtime power management 
+	 * pm_runtime_set_autosuspend_delay(i2c_dev->dev, STM32F7_AUTOSUSPEND_DELAY);
+	 * pm_runtime_use_autosuspend(i2c_dev->dev);
+	 * pm_runtime_set_active(i2c_dev->dev);
+	 * pm_runtime_enable(i2c_dev->dev);
+	 * Pm_runtime_get_noresume(&pdev->dev);
+	 */
 
 	stm32f7_i2c_hw_config(i2c_dev);
 
@@ -2269,8 +2285,10 @@ static int stm32f7_i2c_probe(struct platform_device *pdev)
 
 	dev_info(i2c_dev->dev, "STM32F7 I2C-%d bus adapter\n", adap->nr);
 
-	pm_runtime_mark_last_busy(i2c_dev->dev);
-	pm_runtime_put_autosuspend(i2c_dev->dev);
+	/* Disable runtime power management 
+	 * pm_runtime_mark_last_busy(i2c_dev->dev);
+	 * pm_runtime_put_autosuspend(i2c_dev->dev);
+	 */
 
 	return 0;
 
@@ -2281,10 +2299,12 @@ i2c_adapter_remove:
 	i2c_del_adapter(adap);
 
 pm_disable:
-	pm_runtime_put_noidle(i2c_dev->dev);
-	pm_runtime_disable(i2c_dev->dev);
-	pm_runtime_set_suspended(i2c_dev->dev);
-	pm_runtime_dont_use_autosuspend(i2c_dev->dev);
+	/* Disable runtime power management 
+	 * pm_runtime_put_noidle(i2c_dev->dev);
+	 * pm_runtime_disable(i2c_dev->dev);
+	 * pm_runtime_set_suspended(i2c_dev->dev);
+	 * pm_runtime_dont_use_autosuspend(i2c_dev->dev);
+	 */
 
 	if (i2c_dev->wakeup_src)
 		dev_pm_clear_wake_irq(i2c_dev->dev);
@@ -2315,7 +2335,9 @@ static int stm32f7_i2c_remove(struct platform_device *pdev)
 	stm32f7_i2c_disable_smbus_host(i2c_dev);
 
 	i2c_del_adapter(&i2c_dev->adap);
-	pm_runtime_get_sync(i2c_dev->dev);
+	/* Disable runtime power management 
+	 * pm_runtime_get_sync(i2c_dev->dev);
+	 */
 
 	if (i2c_dev->wakeup_src) {
 		dev_pm_clear_wake_irq(i2c_dev->dev);
@@ -2326,10 +2348,12 @@ static int stm32f7_i2c_remove(struct platform_device *pdev)
 		device_init_wakeup(i2c_dev->dev, false);
 	}
 
-	pm_runtime_put_noidle(i2c_dev->dev);
-	pm_runtime_disable(i2c_dev->dev);
-	pm_runtime_set_suspended(i2c_dev->dev);
-	pm_runtime_dont_use_autosuspend(i2c_dev->dev);
+	/* Disable runtime power management 
+	 * pm_runtime_put_noidle(i2c_dev->dev);
+	 * pm_runtime_disable(i2c_dev->dev);
+	 * pm_runtime_set_suspended(i2c_dev->dev);
+	 * pm_runtime_dont_use_autosuspend(i2c_dev->dev);
+	 */
 
 	if (i2c_dev->dma) {
 		stm32_i2c_dma_free(i2c_dev->dma);
