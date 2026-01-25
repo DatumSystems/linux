@@ -318,6 +318,7 @@ void b53_brcm_hdr_setup(struct dsa_switch *ds, int port)
 		break;
 	default:
 		val = 0;
+		tag_en = false;
 		break;
 	}
 
