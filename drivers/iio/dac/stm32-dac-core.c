@@ -264,7 +264,23 @@ static struct platform_driver stm32_dac_driver = {
 		.pm = &stm32_dac_core_pm_ops,
 	},
 };
-module_platform_driver(stm32_dac_driver);
+//module_platform_driver(stm32_dac_driver);
+
+/*
+ * DAC driver register needs to be done after adc for Datum
+ * This is a patch until DAC/ADC functions are moved to the CM4 context
+ */
+static int __init stm32_dac_drv_reg(void)
+{
+	return platform_driver_register(&stm32_dac_driver);
+}
+late_initcall(stm32_dac_drv_reg);
+
+static void __exit stm32_dac_exit(void)
+{
+	platform_driver_unregister(&stm32_dac_driver);
+}
+module_exit(stm32_dac_exit);
 
 MODULE_AUTHOR("Fabrice Gasnier <fabrice.gasnier@st.com>");
 MODULE_DESCRIPTION("STMicroelectronics STM32 DAC core driver");
