@@ -1830,7 +1830,7 @@ config SENSORS_ADS7871
 
 config SENSORS_AMC6821
 	tristate "Texas Instruments AMC6821"
-	depends on I2C 
+	depends on I2C
 	help
 	  If you say yes here you get support for the Texas Instruments
 	  AMC6821 hardware monitoring chips.
@@ -1861,6 +1861,22 @@ config SENSORS_INA2XX
 	  Default value for Rshunt is 10 mOhms.
 	  This driver can also be built as a module. If so, the module
 	  will be called ina2xx.
+
+config SENSORS_INA2XX_DATUM
+	tristate "Texas Instruments INA219 and compatibles with Datum SPI/I2C clocks shorted"
+	depends on I2C
+	select REGMAP_I2C
+	help
+	  If you say yes here you get support for INA219, INA220, INA226,
+	  INA230, and INA231 power monitor chips.
+
+	  The INA2xx driver is configured for the default configuration of
+	  the part as described in the datasheet.
+	  Default value for Rshunt is 10 mOhms.
+	  This driver can also be built as a module. If so, the module
+	  will be called ina2xx-datum.
+	  This driver is for use with the Datum Systems Inc. SPI/I2C shorted bus
+	  management system that fixes the I2C and SPI bus clocks shorted together.
 
 config SENSORS_INA3221
 	tristate "Texas Instruments INA3221 Triple Power Monitor"
