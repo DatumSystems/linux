@@ -2095,6 +2095,7 @@
 				snps,mixed-burst;
 				snps,pbl = <2>;
 				snps,en-tx-lpi-clockgating;
+				st,ext-phyclk;
 				snps,axi-config = <&stmmac_axi_config_0>;
 				snps,tso;
 				power-domains = <&pd_core>;
