@@ -4,3 +4,4 @@ CompileFlags:
     - -fno-ipa-sra
     - -fno-allow-store-data-races
     - -fconserve-stack
+    - -mno-fdpic
