@@ -287,8 +287,7 @@ static void mcp9902_init_client(struct i2c_client *client)
 	i2c_smbus_write_byte_data(client, MCP9902_REG_W_CONFIG, 0x9F);	/* run - extended temp */
 }
 
-static int mcp9902_probe(struct i2c_client *new_client,
-			 const struct i2c_device_id *id)
+static int mcp9902_probe(struct i2c_client *new_client)
 {
 	struct mcp9902_data *data;
 	struct device *hwmon_dev;
