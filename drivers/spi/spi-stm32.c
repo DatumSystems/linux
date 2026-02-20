@@ -2329,6 +2329,7 @@ static int stm32_spi_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "failed to request tx dma channel\n");
 	} else {
 		ctrl->dma_tx = spi->dma_tx;
+		dev_info(&pdev->dev, "using tx dma %s\n", dma_chan_name(spi->dma_tx));
 	}
 
 	spi->dma_rx = dma_request_chan(spi->dev, "rx");
@@ -2341,6 +2342,7 @@ static int stm32_spi_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "failed to request rx dma channel\n");
 	} else {
 		ctrl->dma_rx = spi->dma_rx;
+		dev_info(&pdev->dev, "using rx dma %s\n", dma_chan_name(spi->dma_rx));
 	}
 
 	if (spi->dma_tx || spi->dma_rx)
@@ -2449,25 +2451,12 @@ static void stm32_spi_remove(struct platform_device *pdev)
 
 static int __maybe_unused stm32_spi_runtime_suspend(struct device *dev)
 {
-	struct spi_controller *ctrl = dev_get_drvdata(dev);
-	struct stm32_spi *spi = spi_controller_get_devdata(ctrl);
-
-	clk_disable_unprepare(spi->clk);
-
 	return pinctrl_pm_select_sleep_state(dev);
 }
 
 static int __maybe_unused stm32_spi_runtime_resume(struct device *dev)
 {
-	struct spi_controller *ctrl = dev_get_drvdata(dev);
-	struct stm32_spi *spi = spi_controller_get_devdata(ctrl);
-	int ret;
-
-	ret = pinctrl_pm_select_default_state(dev);
-	if (ret)
-		return ret;
-
-	return clk_prepare_enable(spi->clk);
+	return pinctrl_pm_select_default_state(dev);
 }
 
 static int __maybe_unused stm32_spi_suspend(struct device *dev)
