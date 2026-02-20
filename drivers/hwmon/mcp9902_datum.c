@@ -315,8 +315,7 @@ static void mcp9902_init_client(struct i2c_client *client)
 	datum_b53_spi_mutex_unlock(adapter->dev.parent);
 }
 
-static int mcp9902_probe(struct i2c_client *new_client,
-			 const struct i2c_device_id *id)
+static int mcp9902_probe(struct i2c_client *new_client)
 {
 	struct mcp9902_data *data;
 	struct device *hwmon_dev;
