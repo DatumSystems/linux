@@ -2,7 +2,7 @@
 VERSION = 6
 PATCHLEVEL = 6
 SUBLEVEL = 78
-EXTRAVERSION = -mark.4
+EXTRAVERSION = -datum.1
 NAME = Pinguïn Aangedreven
 
 # *DOCUMENTATION*
