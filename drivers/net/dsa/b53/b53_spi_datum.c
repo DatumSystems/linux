@@ -47,15 +47,15 @@ EXPORT_SYMBOL(datum_spi2_i2c3_clock_short);
 
 inline void datum_b53_spi_mutex_lock(void)
 { 
-	if(datum_spi2_i2c3_clock_short)
-		mutex_lock(&datum_b53_spi_mutex);
+	// TODO: remove when working if(datum_spi2_i2c3_clock_short)
+	// TODO: remove when working 	mutex_lock(&datum_b53_spi_mutex);
 }
 EXPORT_SYMBOL(datum_b53_spi_mutex_lock);
 
 inline void datum_b53_spi_mutex_unlock(struct device *dev)
 {
-	if(datum_spi2_i2c3_clock_short)
-		mutex_unlock(&datum_b53_spi_mutex);
+	// TODO: remove when working if(datum_spi2_i2c3_clock_short)
+	// TODO: remove when working 	mutex_unlock(&datum_b53_spi_mutex);
 }
 EXPORT_SYMBOL(datum_b53_spi_mutex_unlock);
 
@@ -428,7 +428,7 @@ MODULE_DEVICE_TABLE(spi, b53_spi_ids);
 
 static struct spi_driver b53_spi_driver = {
 	.driver = {
-		.name	= "b53-switch-datum",
+		.name	= "bcm53134_datum",
 		.of_match_table = b53_spi_of_match,
 	},
 	.probe	= b53_spi_probe,

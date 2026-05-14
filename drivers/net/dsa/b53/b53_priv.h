@@ -113,6 +113,7 @@ struct b53_device {
 	struct mutex stats_mutex;
 	struct mutex arl_mutex;
 	const struct b53_io_ops *ops;
+	struct gpio_desc *reset_gpiod;
 
 	/* chip specific data */
 	u32 chip_id;
@@ -125,10 +126,17 @@ struct b53_device {
 	u8 num_arl_bins;
 	u16 num_arl_buckets;
 	enum dsa_tag_protocol tag_protocol;
+	enum dsa_tag_protocol tag_protocol_imp;
+
+	/* raw register read data*/
+	u8 page;
+	u8 reg;
+	u8 size;
 
 	/* used ports mask */
 	u16 enabled_ports;
 	unsigned int imp_port;
+	unsigned int cpu_port;
 
 	/* connect specific data */
 	u8 current_page;

@@ -1238,7 +1238,7 @@ config SENSORS_MCP9902_DATUM
 	  with internal thermal diode.
 
 	  This driver can also be built as a module. If so, the module
-	  will be called mcp9902-datum.
+	  will be called mcp9902_datum.
 
 	  This driver is for use with the Datum Systems Inc. SPI/I2C shorted bus
 	  management system that fixes the I2C and SPI bus clocks shorted together.

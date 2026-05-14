@@ -20,6 +20,7 @@
 #include <linux/delay.h>
 #include <linux/export.h>
 #include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_data/b53.h>
@@ -828,6 +829,24 @@ static void b53_switch_reset_gpio(struct b53_device *dev)
 
 	gpio_set_value(gpio, 1);
 	mdelay(20);
+
+	dev->current_page = 0xff;
+}
+
+static void b53_switch_reset_gpiod(struct b53_device *dev)
+{
+	struct gpio_desc *gpiod = dev->reset_gpiod;
+
+	if (IS_ERR(gpiod))
+		return;
+
+	/* Reset sequence: RESET low(5ms)->high(10ms)
+	 */
+	gpiod_set_value(gpiod, 1);		// Reset Asserted (Voltage Low)
+	mdelay(5);
+
+	gpiod_set_value(gpiod, 0);		// Reset De-Asserted (Voltage High)
+	mdelay(10);
 
 	dev->current_page = 0xff;
 }
@@ -2872,7 +2891,16 @@ EXPORT_SYMBOL(b53_switch_detect);
 
 int b53_switch_register(struct b53_device *dev)
 {
+	int i;
 	int ret;
+	u16 phyreg;
+
+	dev->reset_gpiod = devm_gpiod_get(dev->dev, "reset", GPIOD_OUT_HIGH);		// Reset Asserted (Voltage Low)
+	if (IS_ERR(dev->reset_gpiod)) {
+		dev_err(dev->ds->dev, "Failed to get reset GPIO\n");
+		return PTR_ERR(dev->reset_gpiod);
+	}
+	b53_switch_reset_gpiod(dev);
 
 	if (dev->pdata) {
 		dev->chip_id = dev->pdata->chip_id;
@@ -2889,7 +2917,18 @@ int b53_switch_register(struct b53_device *dev)
 	dev_info(dev->dev, "found switch: %s, rev %i\n",
 		 dev->name, dev->core_rev);
 
-	return dsa_register_switch(dev->ds);
+	ret = dsa_register_switch(dev->ds);
+	/* Disable integrated PHY ports */
+	for(i = 0; i < dev->num_ports; i++)
+	{
+		if((dev->enabled_ports & BIT(i)) && (i != dev->cpu_port) && (i != dev->imp_port))
+		{
+			b53_read16(dev, B53_PORT_MII_PAGE(i), B53_GMII_CTL, &phyreg);
+			phyreg |= GMII_PWR_DOWN;
+			b53_write16(dev, B53_PORT_MII_PAGE(i), B53_GMII_CTL, phyreg);
+		}
+	}
+	return ret;
 }
 EXPORT_SYMBOL(b53_switch_register);
 
