@@ -6,13 +6,28 @@
 	],
 	"settings": {
 		"clangd.checkUpdates": true,
-
 		"editor.stickyTabStops": true,
 		"clangd.enableCodeCompletion": true,
 		"clangd.enableHover": true,
 		"editor.inlayHints.enabled": "off",
 		"clangd.arguments": [
 			"--enable-config"
-		]
+		],
+		"editor.defaultFormatter": null,
+
+		"editor.detectIndentation": false,
+
+		"[c]": {
+			"editor.insertSpaces": false,
+			"editor.tabSize": 4
+		},
+		"[cpp]": {
+			"editor.insertSpaces": false,
+			"editor.tabSize": 4
+		},
+		"[h]": {
+			"editor.insertSpaces": false,
+			"editor.tabSize": 4
+		}
 	}
 }

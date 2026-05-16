@@ -125,7 +125,7 @@ struct b53_device {
 	int reset_gpio;
 	u8 num_arl_bins;
 	u16 num_arl_buckets;
-	enum dsa_tag_protocol tag_protocol;
+	enum dsa_tag_protocol tag_protocol_cpu;
 	enum dsa_tag_protocol tag_protocol_imp;
 
 	/* raw register read data*/
@@ -398,6 +398,8 @@ int b53_mirror_add(struct dsa_switch *ds, int port,
 		   struct netlink_ext_ack *extack);
 enum dsa_tag_protocol b53_get_tag_protocol(struct dsa_switch *ds, int port,
 					   enum dsa_tag_protocol mprot);
+int b53_change_tag_protocol(struct dsa_switch *ds,
+				enum dsa_tag_protocol mprot);					   
 void b53_mirror_del(struct dsa_switch *ds, int port,
 		    struct dsa_mall_mirror_tc_entry *mirror);
 int b53_enable_port(struct dsa_switch *ds, int port, struct phy_device *phy);

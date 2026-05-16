@@ -22,6 +22,7 @@ extern struct packet_type dsa_pack_type;
 const struct dsa_device_ops *dsa_tag_driver_get_by_id(int tag_protocol);
 const struct dsa_device_ops *dsa_tag_driver_get_by_name(const char *name);
 void dsa_tag_driver_put(const struct dsa_device_ops *ops);
+const struct dsa_device_ops *dsa_tag_driver_get(int tag_protocol);
 const char *dsa_tag_protocol_to_str(const struct dsa_device_ops *ops);
 
 static inline int dsa_tag_protocol_overhead(const struct dsa_device_ops *ops)
@@ -38,7 +39,7 @@ static inline struct net_device *dsa_master_find_slave(struct net_device *dev,
 
 	list_for_each_entry(dp, &dst->ports, list)
 		if (dp->ds->index == device && dp->index == port &&
-		    dp->type == DSA_PORT_TYPE_USER)
+		    (dp->type == DSA_PORT_TYPE_USER || dp->type == DSA_PORT_TYPE_IMP))
 			return dp->slave;
 
 	return NULL;

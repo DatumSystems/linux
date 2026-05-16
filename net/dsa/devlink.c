@@ -325,6 +325,9 @@ int dsa_port_devlink_setup(struct dsa_port *dp)
 	case DSA_PORT_TYPE_DSA:
 		attrs.flavour = DEVLINK_PORT_FLAVOUR_DSA;
 		break;
+	case DSA_PORT_TYPE_IMP:
+		attrs.flavour = DEVLINK_PORT_FLAVOUR_PHYSICAL;
+		break;
 	case DSA_PORT_TYPE_USER:
 		attrs.flavour = DEVLINK_PORT_FLAVOUR_PHYSICAL;
 		break;

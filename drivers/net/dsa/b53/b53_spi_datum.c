@@ -47,15 +47,15 @@ EXPORT_SYMBOL(datum_spi2_i2c3_clock_short);
 
 inline void datum_b53_spi_mutex_lock(void)
 { 
-	// TODO: remove when working if(datum_spi2_i2c3_clock_short)
-	// TODO: remove when working 	mutex_lock(&datum_b53_spi_mutex);
+	if(datum_spi2_i2c3_clock_short)
+		mutex_lock(&datum_b53_spi_mutex);
 }
 EXPORT_SYMBOL(datum_b53_spi_mutex_lock);
 
 inline void datum_b53_spi_mutex_unlock(struct device *dev)
 {
-	// TODO: remove when working if(datum_spi2_i2c3_clock_short)
-	// TODO: remove when working 	mutex_unlock(&datum_b53_spi_mutex);
+	if(datum_spi2_i2c3_clock_short)
+		mutex_unlock(&datum_b53_spi_mutex);
 }
 EXPORT_SYMBOL(datum_b53_spi_mutex_unlock);
 

@@ -463,6 +463,7 @@ static void dsa_tree_teardown_cpu_ports(struct dsa_switch_tree *dst)
 
 static int dsa_port_setup(struct dsa_port *dp)
 {
+	struct devlink_port *dlp = &dp->devlink_port;
 	bool dsa_port_link_registered = false;
 	struct dsa_switch *ds = dp->ds;
 	bool dsa_port_enabled = false;
@@ -496,6 +497,23 @@ static int dsa_port_setup(struct dsa_port *dp)
 			break;
 		dsa_port_enabled = true;
 
+		break;
+	case DSA_PORT_TYPE_IMP:
+		err = dsa_shared_port_link_register_of(dp);
+		if (err)
+			break;
+		dsa_port_link_registered = true;
+
+		err = dsa_port_enable(dp, NULL);
+		if (err)
+			break;
+		dsa_port_enabled = true;
+
+		of_get_mac_address(dp->dn, dp->mac);
+		err = dsa_slave_create(dp);
+		if (err)
+			break;
+		devlink_port_type_eth_set(dlp);
 		break;
 	case DSA_PORT_TYPE_DSA:
 		if (dp->dn) {
@@ -547,6 +565,12 @@ static void dsa_port_teardown(struct dsa_port *dp)
 		dsa_port_disable(dp);
 		if (dp->dn)
 			dsa_shared_port_link_unregister_of(dp);
+		break;
+	case DSA_PORT_TYPE_IMP:
+		if (dp->slave) {
+			dsa_slave_destroy(dp->slave);
+			dp->slave = NULL;
+		}
 		break;
 	case DSA_PORT_TYPE_DSA:
 		dsa_port_disable(dp);
@@ -1135,6 +1159,17 @@ static int dsa_port_parse_dsa(struct dsa_port *dp)
 	return 0;
 }
 
+static int dsa_port_parse_imp(struct dsa_port *dp, const char *name)
+{
+	if (!name)
+		name = "imp%d";
+
+	dp->type = DSA_PORT_TYPE_IMP;
+	dp->name = name;
+
+	return 0;
+}
+
 static enum dsa_tag_protocol dsa_get_tag_protocol(struct dsa_port *dp,
 						  struct net_device *master)
 {
@@ -1158,6 +1193,7 @@ static enum dsa_tag_protocol dsa_get_tag_protocol(struct dsa_port *dp,
 	/* If the master device is not itself a DSA slave in a disjoint DSA
 	 * tree, then return immediately.
 	 */
+	tag_protocol =  ds->ops->get_tag_protocol(ds, dp->index, tag_protocol);
 	return ds->ops->get_tag_protocol(ds, dp->index, tag_protocol);
 }
 
@@ -1265,6 +1301,10 @@ static int dsa_port_parse_of(struct dsa_port *dp, struct device_node *dn)
 
 		user_protocol = of_get_property(dn, "dsa-tag-protocol", NULL);
 		return dsa_port_parse_cpu(dp, master, user_protocol);
+	}
+
+	if(of_property_read_bool(dn, "port-imp")) {
+		return dsa_port_parse_imp(dp, name);
 	}
 
 	if (link)
