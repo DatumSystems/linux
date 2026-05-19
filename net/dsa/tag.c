@@ -241,3 +241,32 @@ void dsa_tag_driver_put(const struct dsa_device_ops *ops)
 	}
 	mutex_unlock(&dsa_tag_drivers_lock);
 }
+
+const struct dsa_device_ops *dsa_tag_driver_get(int tag_protocol)
+{
+	struct dsa_tag_driver *dsa_tag_driver;
+	const struct dsa_device_ops *ops;
+	bool found = false;
+
+	request_module("%s%d", DSA_TAG_DRIVER_ALIAS, tag_protocol);
+
+	mutex_lock(&dsa_tag_drivers_lock);
+	list_for_each_entry(dsa_tag_driver, &dsa_tag_drivers_list, list) {
+		ops = dsa_tag_driver->ops;
+		if (ops->proto == tag_protocol) {
+			found = true;
+			break;
+		}
+	}
+
+	if (found) {
+		if (!try_module_get(dsa_tag_driver->owner))
+			ops = ERR_PTR(-ENOPROTOOPT);
+	} else {
+		ops = ERR_PTR(-ENOPROTOOPT);
+	}
+
+	mutex_unlock(&dsa_tag_drivers_lock);
+
+	return ops;
+}

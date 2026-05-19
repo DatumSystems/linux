@@ -709,7 +709,10 @@ static int ina2xx_probe(struct i2c_client *client)
 	if (chip == ina226)
 		data->groups[group++] = &ina226_group;
 
-	hwmon_dev = devm_hwmon_device_register_with_groups(dev, client->name,
+	char *name = devm_kstrdup(dev, client->name, GFP_KERNEL);
+	strreplace(name, '-', '_');
+
+	hwmon_dev = devm_hwmon_device_register_with_groups(dev, name,
 							   data, data->groups);
 	if (IS_ERR(hwmon_dev))
 		return PTR_ERR(hwmon_dev);
@@ -721,11 +724,11 @@ static int ina2xx_probe(struct i2c_client *client)
 }
 
 static const struct i2c_device_id ina2xx_id[] = {
-	{ "ina219-datum", ina219 },
-	{ "ina220-datum", ina219 },
-	{ "ina226-datum", ina226 },
-	{ "ina230-datum", ina226 },
-	{ "ina231-datum", ina226 },
+	{ "ina219_datum", ina219 },
+	{ "ina220_datum", ina219 },
+	{ "ina226_datum", ina226 },
+	{ "ina230_datum", ina226 },
+	{ "ina231_datum", ina226 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, ina2xx_id);
@@ -757,7 +760,7 @@ MODULE_DEVICE_TABLE(of, ina2xx_of_match);
 
 static struct i2c_driver ina2xx_driver = {
 	.driver = {
-		.name	= "ina2xx-datum",
+		.name	= "ina2xx_datum",
 		.of_match_table = of_match_ptr(ina2xx_of_match),
 	},
 	.probe		= ina2xx_probe,

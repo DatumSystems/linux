@@ -2023,7 +2023,7 @@ static void dsa_bridge_mtu_normalization(struct dsa_port *dp)
 			struct dsa_hw_port *hw_port;
 			struct net_device *slave;
 
-			if (other_dp->type != DSA_PORT_TYPE_USER)
+			if ((other_dp->type != DSA_PORT_TYPE_USER) && (other_dp->type != DSA_PORT_TYPE_IMP))
 				continue;
 
 			if (!dsa_port_bridge_same(dp, other_dp))
@@ -2066,90 +2066,30 @@ out:
 	dsa_hw_port_list_free(&hw_port_list);
 }
 
+/* Datum - rewrite to unlink slave (switch ports) from master (eth0) */
 int dsa_slave_change_mtu(struct net_device *dev, int new_mtu)
 {
-	struct net_device *master = dsa_slave_to_master(dev);
 	struct dsa_port *dp = dsa_slave_to_port(dev);
-	struct dsa_port *cpu_dp = dp->cpu_dp;
-	struct dsa_switch *ds = dp->ds;
-	struct dsa_port *other_dp;
-	int largest_mtu = 0;
-	int new_master_mtu;
-	int old_master_mtu;
+	struct dsa_slave_priv *p = netdev_priv(dev);
+	struct dsa_switch *ds = p->dp->ds;
 	int mtu_limit;
-	int overhead;
-	int cpu_mtu;
 	int err;
 
 	if (!ds->ops->port_change_mtu)
 		return -EOPNOTSUPP;
 
-	dsa_tree_for_each_user_port(other_dp, ds->dst) {
-		int slave_mtu;
+	mtu_limit = dev->max_mtu;
 
-		/* During probe, this function will be called for each slave
-		 * device, while not all of them have been allocated. That's
-		 * ok, it doesn't change what the maximum is, so ignore it.
-		 */
-		if (!other_dp->slave)
-			continue;
-
-		/* Pretend that we already applied the setting, which we
-		 * actually haven't (still haven't done all integrity checks)
-		 */
-		if (dp == other_dp)
-			slave_mtu = new_mtu;
-		else
-			slave_mtu = other_dp->slave->mtu;
-
-		if (largest_mtu < slave_mtu)
-			largest_mtu = slave_mtu;
-	}
-
-	overhead = dsa_tag_protocol_overhead(cpu_dp->tag_ops);
-	mtu_limit = min_t(int, master->max_mtu, dev->max_mtu + overhead);
-	old_master_mtu = master->mtu;
-	new_master_mtu = largest_mtu + overhead;
-	if (new_master_mtu > mtu_limit)
+	if(new_mtu > mtu_limit)
 		return -ERANGE;
 
-	/* If the master MTU isn't over limit, there's no need to check the CPU
-	 * MTU, since that surely isn't either.
-	 */
-	cpu_mtu = largest_mtu;
-
-	/* Start applying stuff */
-	if (new_master_mtu != old_master_mtu) {
-		err = dev_set_mtu(master, new_master_mtu);
-		if (err < 0)
-			goto out_master_failed;
-
-		/* We only need to propagate the MTU of the CPU port to
-		 * upstream switches, so emit a notifier which updates them.
-		 */
-		err = dsa_port_mtu_change(cpu_dp, cpu_mtu);
-		if (err)
-			goto out_cpu_failed;
-	}
-
-	err = ds->ops->port_change_mtu(ds, dp->index, new_mtu);
+	err = dsa_port_mtu_change(dp, new_mtu);
 	if (err)
-		goto out_port_failed;
+		return err;
 
 	dev->mtu = new_mtu;
 
-	dsa_bridge_mtu_normalization(dp);
-
 	return 0;
-
-out_port_failed:
-	if (new_master_mtu != old_master_mtu)
-		dsa_port_mtu_change(cpu_dp, old_master_mtu - overhead);
-out_cpu_failed:
-	if (new_master_mtu != old_master_mtu)
-		dev_set_mtu(master, old_master_mtu);
-out_master_failed:
-	return err;
 }
 
 static int __maybe_unused
@@ -3182,11 +3122,14 @@ dsa_bridge_prechangelower_sanity_check(struct net_device *new_lower,
 		if (!netdev_uses_dsa(new_lower) && !netdev_uses_dsa(lower))
 			continue;
 
+		/* Datum:  allow bridging DSA master with non-DSA internal port (eth0 <--> tap0) */
+#if 0		
 		if (!netdev_port_same_parent_id(lower, new_lower)) {
 			NL_SET_ERR_MSG(extack,
 				       "Cannot do software bridging with a DSA master");
 			return notifier_from_errno(-EINVAL);
 		}
+#endif
 	}
 
 	return NOTIFY_DONE;

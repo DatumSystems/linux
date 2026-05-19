@@ -428,7 +428,7 @@ MODULE_DEVICE_TABLE(spi, b53_spi_ids);
 
 static struct spi_driver b53_spi_driver = {
 	.driver = {
-		.name	= "b53-switch-datum",
+		.name	= "bcm53134_datum",
 		.of_match_table = b53_spi_of_match,
 	},
 	.probe	= b53_spi_probe,

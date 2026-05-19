@@ -332,14 +332,14 @@ static int mcp9902_probe(struct i2c_client *new_client)
 	mcp9902_init_client(new_client);
 
 	hwmon_dev = devm_hwmon_device_register_with_groups(&new_client->dev,
-							   new_client->name,
+							   "mcp9902_datum",
 							   data,
 							   mcp9902_groups);
 	return PTR_ERR_OR_ZERO(hwmon_dev);
 }
 
 static const struct i2c_device_id mcp9902_id[] = {
-	{ "mcp9902-datum", 0 },
+	{ "mcp9902_datum", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, mcp9902_id);
@@ -356,7 +356,7 @@ MODULE_DEVICE_TABLE(of, mcp9902_of_match);
 static struct i2c_driver mcp9902_driver = {
 	.class		= I2C_CLASS_HWMON,
 	.driver = {
-		.name	= "mcp9902-datum",
+		.name	= "mcp9902_datum",
 		.of_match_table = of_match_ptr(mcp9902_of_match),
 	},
 	.probe		= mcp9902_probe,
