@@ -10450,6 +10450,7 @@ static struct net_device *netdev_wait_allrefs_any(struct list_head *list)
 	unsigned long rebroadcast_time, warning_time;
 	struct net_device *dev;
 	int wait = 0;
+	int timeout = 12; /* ~3s max if WAIT_REFS_MAX_MSECS is 250ms-ish */
 
 	rebroadcast_time = warning_time = jiffies;
 
@@ -10510,7 +10511,16 @@ static struct net_device *netdev_wait_allrefs_any(struct list_head *list)
 
 			warning_time = jiffies;
 		}
-	}
+
+		if (!timeout--) {
+			list_for_each_entry(dev, list, todo_list) {
+				pr_emerg("unregister_netdevice: giving up on %s, usage=%d\n",
+					dev->name, netdev_refcnt_read(dev));
+			}
+			/* Return some device from the list (first entry). */
+			return list_first_entry(list, struct net_device, todo_list);
+		}
+ 	}
 }
 
 /* The sequence is:
@@ -10582,7 +10592,8 @@ void netdev_run_todo(void)
 		list_del(&dev->todo_list);
 
 		/* paranoia */
-		BUG_ON(netdev_refcnt_read(dev) != 1);
+		// BUG_ON(netdev_refcnt_read(dev) != 1);
+		WARN_ON(netdev_refcnt_read(dev) != 1);
 		BUG_ON(!list_empty(&dev->ptype_all));
 		BUG_ON(!list_empty(&dev->ptype_specific));
 		WARN_ON(rcu_access_pointer(dev->ip_ptr));

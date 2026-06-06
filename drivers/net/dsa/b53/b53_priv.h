@@ -251,9 +251,15 @@ static inline void b53_switch_remove(struct b53_device *dev)
 	dsa_unregister_switch(dev->ds);
 }
 
+// static inline void b53_switch_shutdown(struct b53_device *dev)
+// {
+// 	dsa_switch_shutdown(dev->ds);
+// }
+
 static inline void b53_switch_shutdown(struct b53_device *dev)
 {
-	dsa_switch_shutdown(dev->ds);
+    pr_info("b53: shutdown: unregistering switch early\n");
+    dsa_unregister_switch(dev->ds);
 }
 
 #define b53_build_op(type_op_size, val_type)				\
