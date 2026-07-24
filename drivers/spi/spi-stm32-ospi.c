@@ -299,7 +299,7 @@ static int stm32_ospi_send(struct spi_device *spi, const struct spi_mem_op *op)
 	if (op->data.dtr)
 		ccr |= CCR_DDTR;
 
-	if (op->data.dtr_swab16)
+	if (op->data.swap16)
 		writel_relaxed(flash->dcr_reg |
 			       FIELD_PREP(DCR1_MTYP_MASK, DCR1_MTYP_MX_MODE),
 			       regs_base + OSPI_DCR1);
@@ -566,7 +566,7 @@ static int stm32_ospi_dtr_calibration(struct stm32_ospi *ospi)
 	struct stm32_ospi_flash *flash = &ospi->flash[ospi->last_cs];
 	void __iomem *regs_base = omi->regs_base;
 	u32 prescaler, bus_freq;
-	u16 period_ps = 0;
+	u32 period_ps = 0;
 	u8 window_len = 0;
 	int ret;
 	bool bypass_mode = false;
@@ -1024,7 +1024,7 @@ static const struct spi_controller_mem_ops stm32_ospi_mem_ops = {
 
 static const struct spi_controller_mem_caps stm32_ospi_mem_caps = {
 	.dtr = true,
-	.dtr_swab16 = true,
+	.swap16 = true,
 };
 
 static int stm32_ospi_probe(struct platform_device *pdev)
