@@ -936,6 +936,9 @@ static int b53_phy_read16(struct dsa_switch *ds, int addr, int reg)
 static int b53_phy_write16(struct dsa_switch *ds, int addr, int reg, u16 val)
 {
 	struct b53_device *priv = ds->priv;
+	/* Hack to force flow control in ANAR */
+	if(reg == 0x04)
+		val |= 0x0400;
 
 	if (priv->ops->phy_write16)
 		return priv->ops->phy_write16(priv, addr, reg, val);
