@@ -930,6 +930,10 @@ static int b53_phy_read16(struct dsa_switch *ds, int addr, int reg)
 		ret = b53_read16(priv, B53_PORT_MII_PAGE(addr),
 				 reg * 2, &value);
 
+	/* Hack to force flow control in ANAR */
+	if(reg == 0x04)
+		value |= 0x0400;
+
 	return ret ? ret : value;
 }
 
