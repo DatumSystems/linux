@@ -116,7 +116,7 @@ static int uio_dsi_mcc_irqcontrol(struct uio_info *dev_info, s32 control)
 	 *                 0 = toggle cm4 tx interrupt and update tx wr offset if opeartion is tx
 	 *                 1 = update tx wr offset only, no cm4 interrupt toggle.
 	 *       1 bit     1 = reset request from CM4 to CA7
-	 *       1 bit     1 = reset reuest from CA& to CM4
+	 *       1 bit     1 = reset request from CA7 to CM4
 	 *       13 bits : spare
 	 * LSB:  16 bits : new tx or rx offset
 	 */
